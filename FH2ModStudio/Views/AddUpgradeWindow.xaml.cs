@@ -137,7 +137,7 @@ public partial class AddUpgradeWindow : Window
         OptionsPanel.Children.Add(new TextBlock { Text = caption, Style = (Style)FindResource("CaptionTxt") });
         var grid = new Grid { Margin = new Thickness(0, 0, 0, 6) };
         _search = new TextBox { Style = (Style)FindResource("GlassTextBox"), FontSize = 12, Padding = new Thickness(8, 5, 8, 5) };
-        var hint = new TextBlock { Text = "Search…", FontSize = 12, Foreground = new SolidColorBrush(Color.FromRgb(0x8E, 0x8E, 0x93)), Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false };
+        var hint = new TextBlock { Text = "Search…", FontSize = 12, Foreground = new SolidColorBrush(Color.FromRgb(0x6E, 0x6E, 0x73)), Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false };
         _search.TextChanged += (_, _) => { hint.Visibility = _search.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed; FilterDonors(); };
         grid.Children.Add(_search);
         grid.Children.Add(hint);

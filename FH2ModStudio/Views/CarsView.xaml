@@ -24,11 +24,11 @@
                 </Grid.RowDefinitions>
                 <Grid Margin="14,0,14,8">
                     <TextBlock Text="Cars" FontSize="14" FontWeight="Bold" Foreground="#1C1C1E"/>
-                    <TextBlock x:Name="CarCountTxt" FontSize="11" Foreground="#8E8E93" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="CarCountTxt" FontSize="11" Foreground="#6E6E73" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                 </Grid>
                 <Grid Grid.Row="1" Margin="12,0,12,8">
                     <TextBox x:Name="SearchBox" Style="{StaticResource GlassTextBox}" FontSize="12" Padding="10,6" TextChanged="SearchBox_TextChanged"/>
-                    <TextBlock x:Name="SearchHint" Text="Search name, make, year or class" FontSize="12" Foreground="#8E8E93"
+                    <TextBlock x:Name="SearchHint" Text="Search name, make, year or class" FontSize="12" Foreground="#6E6E73"
                                Margin="12,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
                 </Grid>
                 <StackPanel Grid.Row="2" Margin="12,0,12,8">
@@ -44,8 +44,8 @@
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <StackPanel>
-                                <TextBlock Text="{Binding Media}" FontSize="12" FontWeight="SemiBold" Foreground="#1C1C1E" TextTrimming="CharacterEllipsis"/>
-                                <TextBlock Text="{Binding Subtitle}" FontSize="10" Foreground="#8E8E93" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Text="{Binding Title}" FontSize="12" FontWeight="SemiBold" Foreground="#1C1C1E" TextTrimming="CharacterEllipsis" ToolTip="{Binding Title}"/>
+                                <TextBlock Text="{Binding Subtitle}" FontSize="10" Foreground="#6E6E73" TextTrimming="CharacterEllipsis"/>
                             </StackPanel>
                         </DataTemplate>
                     </ListBox.ItemTemplate>

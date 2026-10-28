@@ -6,7 +6,11 @@ namespace FH2ModStudio.Core;
 
 public sealed record CarEntry(long Id, string Media, string Make, int Year, string ClassText)
 {
-    public string Subtitle => $"{Make} · {Year} · {ClassText}";
+    /// <summary>The game's model name ("Gallardo LP570-4 Superleggera"), empty when the string table has none.</summary>
+    public string Name { get; init; } = "";
+    /// <summary>What players know the car as: "2011 Lamborghini Gallardo LP570-4 Superleggera" (MediaName as fallback).</summary>
+    public string Title => Name.Length > 0 ? $"{Year} {Make} {Name}" : Media;
+    public string Subtitle => Name.Length > 0 ? $"{ClassText} · {Media}" : $"{Make} · {Year} · {ClassText}";
 }
 
 public sealed record CarIds(long CarId, string Media, long? EngineId, long? DrivetrainId, int EngineShare, int DrivetrainShare, long? BodyId);
@@ -207,7 +211,7 @@ public static class CarModel
                 "BodyAeroLateralDragRear", "BodyAeroForwardDownforceFront", "BodyAeroForwardDownforceRear", "BodyAeroAngleZeroDownforce", "BodyAeroWIForceScale"),
             new GroupDef
             {
-                Title = "Wing & bumper downforce (List_AeroPhysics)",
+                Title = "Wing & bumper downforce",
                 Note = "Minimum and maximum downforce and drag. When Min downforce equals Max downforce, downforce tuning is locked in game.",
                 Kind = GroupKind.MultiRow, Tables = new[] { "List_AeroPhysics" },
                 KeyColumn = "AeroPhysicsID", Where = ByAeroPhysics,
@@ -354,6 +358,12 @@ public static class CarModel
         ["AngleZeroDownforce"] = new("Angle at zero downforce", "°", "Pitch angle where downforce drops to zero."),
         ["LateralDrag"] = new("Lateral drag", null, "Sideways aerodynamic drag coefficient."),
         ["RequiresGraphics"] = new("Requires 3D model", "0/1", "1 = render 3D mesh in game, 0 = remove/hide 3D mesh (used by Level 4 part removal upgrades)."),
+        ["BodyAeroLongitudinalDrag"] = new("Air drag (straight ahead)", null, "Body drag when driving forward; higher = lower top speed."),
+        ["BodyAeroVerticalDrag"] = new("Air drag (up / down)", null, "Body drag against vertical movement, e.g. over crests and jumps."),
+        ["BodyAeroLateralDragFront"] = new("Side drag (front)", null, "Body drag against sideways movement at the front, e.g. while drifting."),
+        ["BodyAeroLateralDragRear"] = new("Side drag (rear)", null, "Body drag against sideways movement at the rear."),
+        ["BodyAeroAngleZeroDownforce"] = new("Pitch angle at zero downforce", "°", "Body pitch at which the body makes no downforce."),
+        ["BodyAeroWIForceScale"] = new("Wind force scale", null, "How strongly wind pushes the car."),
         ["BodyAeroForwardDownforceFront"] = new("Forward downforce (front)", "lbf", "Aerodynamic downforce acting on the front axle."),
         ["BodyAeroForwardDownforceRear"] = new("Forward downforce (rear)", "lbf", "Aerodynamic downforce acting on the rear axle."),
     };
@@ -439,9 +449,13 @@ public static class CarModel
         var media = Directory.Exists(carsDir)
             ? new HashSet<string>(Directory.GetFiles(carsDir, "*.zip").Select(Path.GetFileNameWithoutExtension)!, StringComparer.OrdinalIgnoreCase)
             : null;
-        var r = stock.Query("SELECT c.Id, c.MediaName, c.Year, c.ClassID, c.PerformanceIndex, m.IconPathBase FROM Data_Car c " +
+        var r = stock.Query("SELECT c.Id, c.MediaName, c.Year, c.ClassID, c.PerformanceIndex, m.IconPathBase, c.DisplayName, m.DisplayName FROM Data_Car c " +
                             "LEFT JOIN List_CarMake m ON m.ID = c.MakeID ORDER BY c.MediaName;", out _);
         if (r == null) return new();
+        // names as the game shows them (string tables); the MediaName stays visible as the subtitle
+        var mediaDir = Path.GetDirectoryName(carsDir.TrimEnd('\\', '/')) ?? "";
+        var carNames = StringTables.Load(mediaDir, "Data_Car");
+        var makeNames = StringTables.Load(mediaDir, "List_CarMake");
         var list = new List<CarEntry>();
         foreach (var row in r.Rows)
         {
@@ -449,12 +463,15 @@ public static class CarModel
             if (name.Length == 0 || (media != null && !media.Contains(name))) continue;
             int.TryParse(row[3], out var cls);
             double.TryParse(row[4], NumberStyles.Float, CultureInfo.InvariantCulture, out var pi);
-            var make = Regex.Replace(row[5] ?? "", @"(?<=[a-z])(?=[A-Z])", " ");
+            var make = StringTables.Text(makeNames, row[7]) ?? Regex.Replace(row[5] ?? "", @"(?<=[a-z])(?=[A-Z])", " ");
             int.TryParse(row[2], out var year);
             var classText = $"{ClassNames[Math.Clamp(cls, 0, ClassNames.Length - 1)]} {Math.Round(pi * 1000)}";
-            list.Add(new CarEntry(long.Parse(row[0]!, CultureInfo.InvariantCulture), name, make.Length > 0 ? make : "Unknown make", year, classText));
+            list.Add(new CarEntry(long.Parse(row[0]!, CultureInfo.InvariantCulture), name, make.Length > 0 ? make : "Unknown make", year, classText)
+            {
+                Name = StringTables.Text(carNames, row[6]) ?? "",
+            });
         }
-        return list;
+        return list.OrderBy(c => c.Name.Length > 0 ? c.Make : "~").ThenBy(c => c.Name.Length > 0 ? c.Name : c.Media).ThenBy(c => c.Year).ToList();
     }
 
     public static CarIds ResolveIds(ICarDb db, CarEntry car)

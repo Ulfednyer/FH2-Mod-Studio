@@ -41,6 +41,12 @@ public sealed class ModSettings
     public string UiCarsCar { get; set; } = "";
     public string UiCarsSection { get; set; } = "";
     public string UiAddKind { get; set; } = "";
+    public string UiPage { get; set; } = "home";
+    public double UiLeft { get; set; }
+    public double UiTop { get; set; }
+    public double UiWidth { get; set; }
+    public double UiHeight { get; set; }
+    public bool UiMaximized { get; set; }
 
     // drift suspension (DriftDragPack): alignment in its physics rows, steering applied by fh2sql.dll while installed
     public double DriftFrontCamber { get; set; } = -5.0;

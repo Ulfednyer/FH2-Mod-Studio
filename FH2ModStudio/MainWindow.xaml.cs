@@ -30,21 +30,79 @@ public partial class MainWindow : Window
         PortPage.Init(this);
         OnStatus(Session.Status);
         SourceInitialized += (_, _) => GlassHelper.EnableAcrylic(this);
-        KeyDown += (_, e) =>
+        RestoreWindow();
+        Loaded += (_, _) => { if (Settings.UiPage is { Length: > 0 } p && p != "home") ShowPage(p); };
+        PreviewKeyDown += (_, e) =>
         {
             if (Keyboard.Modifiers != ModifierKeys.Control) return;
-            if (e.Key == Key.D1) ShowPage("home");
-            else if (e.Key == Key.D2) ShowPage("cars");
-            else if (e.Key == Key.D3) ShowPage("graphics");
-            else if (e.Key == Key.D4) ShowPage("database");
-            else if (e.Key == Key.D5) ShowPage("port");
+            var key = e.Key == Key.System ? e.SystemKey : e.Key;
+            string? page = key switch
+            {
+                Key.D1 or Key.NumPad1 => "home", Key.D2 or Key.NumPad2 => "cars", Key.D3 or Key.NumPad3 => "graphics",
+                Key.D4 or Key.NumPad4 => "database", Key.D5 or Key.NumPad5 => "port", _ => null,
+            };
+            if (page != null) { ShowPage(page); e.Handled = true; }
+            else if (key == Key.F && CurrentPage()?.FindName("SearchBox") is TextBox search)
+            {
+                search.Focus();
+                search.SelectAll();
+                e.Handled = true;
+            }
+            else if (key == Key.S && CurrentPage()?.FindName("ApplyBtn") is Button { IsEnabled: true, IsVisible: true } apply)
+            {
+                apply.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                e.Handled = true;
+            }
         };
     }
 
-    public void SetStatus(string text) => StatusTxt.Text = text;
+    private FrameworkElement? CurrentPage() =>
+        new FrameworkElement[] { HomePage, CarsPage, GraphicsPage, DatabasePage, PortPage }.FirstOrDefault(p => p.Visibility == Visibility.Visible);
+
+    // ───────────── window size, position and page, kept between starts ─────────────
+
+    private void RestoreWindow()
+    {
+        var s = Settings;
+        if (s.UiWidth >= MinWidth && s.UiHeight >= MinHeight)
+        {
+            var r = new Rect(s.UiLeft, s.UiTop, s.UiWidth, s.UiHeight);
+            var screen = new Rect(SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop,
+                                  SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight);
+            if (screen.IntersectsWith(new Rect(r.Left + 40, r.Top, Math.Max(1, r.Width - 80), 40)))   // title bar reachable
+            {
+                WindowStartupLocation = WindowStartupLocation.Manual;
+                Left = r.Left; Top = r.Top; Width = r.Width; Height = r.Height;
+            }
+        }
+        if (s.UiMaximized) Loaded += (_, _) => WindowState = WindowState.Maximized;
+    }
+
+    private void SaveWindow()
+    {
+        var s = Settings;
+        var r = WindowState == WindowState.Normal ? new Rect(Left, Top, Width, Height) : RestoreBounds;
+        if (!r.IsEmpty) { s.UiLeft = r.Left; s.UiTop = r.Top; s.UiWidth = r.Width; s.UiHeight = r.Height; }
+        s.UiMaximized = WindowState == WindowState.Maximized;
+    }
+
+    private static readonly SolidColorBrush StatusNormal = new(Color.FromRgb(0x48, 0x48, 0x4A));
+    private static readonly SolidColorBrush StatusError = new(Color.FromRgb(0xD7, 0x00, 0x15));
+    private static readonly string[] ErrorWords = { "could not", "couldn't", "failed", "error", "rejected", "not found", "not updated", "missing", "refused" };
+
+    /// <summary>Status line: errors stand out in red; the full text and time are in the tooltip (long messages are cut).</summary>
+    public void SetStatus(string text)
+    {
+        StatusTxt.Text = text;
+        bool error = ErrorWords.Any(w => text.Contains(w, StringComparison.OrdinalIgnoreCase));
+        StatusTxt.Foreground = error ? StatusError : StatusNormal;
+        StatusTxt.FontWeight = error ? FontWeights.SemiBold : FontWeights.Normal;
+        StatusTxt.ToolTip = $"{DateTime.Now:HH:mm:ss}  {text}";
+    }
 
     public void ShowPage(string page)
     {
+        if (Settings.UiPage != page) Settings.UiPage = page;
         HomePage.Visibility = page == "home" ? Visibility.Visible : Visibility.Collapsed;
         CarsPage.Visibility = page == "cars" ? Visibility.Visible : Visibility.Collapsed;
         GraphicsPage.Visibility = page == "graphics" ? Visibility.Visible : Visibility.Collapsed;
@@ -119,6 +177,7 @@ public partial class MainWindow : Window
 
     private void Window_Closed(object? sender, EventArgs e)
     {
+        SaveWindow();
         Settings.Save();
         Session.Dispose();
     }

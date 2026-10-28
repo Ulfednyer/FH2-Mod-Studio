@@ -118,8 +118,9 @@ public partial class CarsView : UserControl
         var terms = SearchBox.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         CarList.ItemsSource = terms.Length == 0
             ? _catalog
-            : _catalog.Where(c => terms.All(t => c.Media.Contains(t, StringComparison.OrdinalIgnoreCase) ||
-                                               c.Subtitle.Contains(t, StringComparison.OrdinalIgnoreCase))).ToList();
+            : _catalog.Where(c => terms.All(t => c.Title.Contains(t, StringComparison.OrdinalIgnoreCase) ||
+                                               c.Subtitle.Contains(t, StringComparison.OrdinalIgnoreCase) ||
+                                               c.Make.Contains(t, StringComparison.OrdinalIgnoreCase))).ToList();
     }
 
     private void CarList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -158,7 +159,7 @@ public partial class CarsView : UserControl
         }
         EmptyPanel.Visibility = Visibility.Collapsed;
         HeaderCard.Visibility = EditorArea.Visibility = ApplyBar.Visibility = Visibility.Visible;
-        CarTitle.Text = car.Media;
+        CarTitle.Text = car.Title;
         CarSubtitle.Text = car.Subtitle;
         LoadProgress.Visibility = Visibility.Visible;
         var (db, ids, facts) = await Task.Run(() =>
@@ -815,7 +816,7 @@ public partial class CarsView : UserControl
         line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         body.Children.Add(line);
 
-        var stockTxt = new TextBlock { FontSize = 11, Foreground = new SolidColorBrush(Color.FromRgb(0x8E, 0x8E, 0x93)), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 4, 0), TextTrimming = TextTrimming.CharacterEllipsis };
+        var stockTxt = new TextBlock { FontSize = 11, Foreground = new SolidColorBrush(Color.FromRgb(0x6E, 0x6E, 0x73)), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 4, 0), TextTrimming = TextTrimming.CharacterEllipsis };
         var reset = new Button { Content = "↺", Style = (Style)FindResource("GlassBtn"), Padding = new Thickness(8, 2, 8, 2), Margin = new Thickness(0), ToolTip = "Back to the stock value" };
         Grid.SetColumn(stockTxt, 1);
         Grid.SetColumn(reset, 2);

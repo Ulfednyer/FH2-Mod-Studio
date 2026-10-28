@@ -47,12 +47,18 @@ public partial class DatabaseView : UserControl
         if (_status.DatabaseReady && _tables.Count == 0) _ = LoadTablesAsync();
     }
 
+    private void GoCars_Click(object sender, RoutedEventArgs e) => _main.ShowPage("cars");
+
     public void OnStatus(SessionStatus s)
     {
         bool wasReady = _status.DatabaseReady;
         _status = s;
         OfflinePanel.Visibility = s.DatabaseReady ? Visibility.Collapsed : Visibility.Visible;
         TableList.Visibility = s.DatabaseReady ? Visibility.Visible : Visibility.Hidden;
+        // offline: no search box behind the card and a clearly inactive workspace instead of an empty grey grid
+        ((FrameworkElement)SearchBox.Parent).Visibility = s.DatabaseReady ? Visibility.Visible : Visibility.Hidden;
+        Workspace.IsEnabled = s.DatabaseReady;
+        Workspace.Opacity = s.DatabaseReady ? 1 : 0.35;
         OfflineTxt.Text = s.Game switch
         {
             GameState.NotRunning => "The game isn't running. Launch it from the Home page - the database becomes available once you're in the game world.",

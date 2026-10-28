@@ -14,11 +14,11 @@
                            Text="Pick a preset, adjust what you like, then press Apply. Each option shows when it takes effect."/>
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                     <Border Style="{StaticResource BadgeLive}" Margin="0"><TextBlock Text="Live" Foreground="#1E8E3E" Style="{StaticResource BadgeTxt}"/></Border>
-                    <TextBlock Text="changes instantly" FontSize="11" Foreground="#8E8E93" Margin="6,0,14,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="changes instantly" FontSize="11" Foreground="#6E6E73" Margin="6,0,14,0" VerticalAlignment="Center"/>
                     <Border Style="{StaticResource BadgeRestart}" Margin="0"><TextBlock Text="Next game start" Foreground="#C96F00" Style="{StaticResource BadgeTxt}"/></Border>
-                    <TextBlock Text="restart the game after Apply" FontSize="11" Foreground="#8E8E93" Margin="6,0,14,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="restart the game after Apply" FontSize="11" Foreground="#6E6E73" Margin="6,0,14,0" VerticalAlignment="Center"/>
                     <Border Style="{StaticResource BadgeLaunch}" Margin="0"><TextBlock Text="Next launch" Foreground="#0062CC" Style="{StaticResource BadgeTxt}"/></Border>
-                    <TextBlock Text="restart Azimuth after Apply" FontSize="11" Foreground="#8E8E93" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="restart Azimuth after Apply" FontSize="11" Foreground="#6E6E73" Margin="6,0,0,0" VerticalAlignment="Center"/>
                 </StackPanel>
 
                 <!-- ════════ QUALITY ════════ -->
@@ -42,7 +42,7 @@
                                     <StackPanel Margin="0,0,4,0">
                                         <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="Bold" Foreground="#1C1C1E"/>
                                         <TextBlock Text="{Binding Summary}" FontSize="11" Foreground="#48484A" TextWrapping="Wrap" Margin="0,2,0,4"/>
-                                        <TextBlock Text="{Binding Cost}" FontSize="10" FontWeight="SemiBold" Foreground="#8E8E93" TextWrapping="Wrap"/>
+                                        <TextBlock Text="{Binding Cost}" FontSize="10" FontWeight="SemiBold" Foreground="#6E6E73" TextWrapping="Wrap"/>
                                     </StackPanel>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>

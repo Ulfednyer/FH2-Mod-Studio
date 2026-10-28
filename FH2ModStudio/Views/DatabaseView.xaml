@@ -23,11 +23,11 @@
                 </Grid.RowDefinitions>
                 <Grid Margin="14,0,14,8">
                     <TextBlock Text="Tables" FontSize="14" FontWeight="Bold" Foreground="#1C1C1E"/>
-                    <TextBlock x:Name="TableCountTxt" FontSize="11" Foreground="#8E8E93" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="TableCountTxt" FontSize="11" Foreground="#6E6E73" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                 </Grid>
                 <Grid Grid.Row="1" Margin="12,0,12,8">
                     <TextBox x:Name="SearchBox" Style="{StaticResource GlassTextBox}" FontSize="12" Padding="10,6" TextChanged="SearchBox_TextChanged"/>
-                    <TextBlock x:Name="SearchHint" Text="Search tables or columns (e.g. Turbo)" FontSize="12" Foreground="#8E8E93"
+                    <TextBlock x:Name="SearchHint" Text="Search tables or columns (e.g. Turbo)" FontSize="12" Foreground="#6E6E73"
                                Margin="12,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
                 </Grid>
                 <ListBox x:Name="TableList" Grid.Row="2" Margin="10,0,10,0" Background="Transparent" BorderThickness="0"
@@ -37,7 +37,7 @@
                         <DataTemplate>
                             <StackPanel>
                                 <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" Foreground="#1C1C1E" TextTrimming="CharacterEllipsis"/>
-                                <TextBlock Text="{Binding Hint}" FontSize="10" Foreground="#8E8E93" TextTrimming="CharacterEllipsis">
+                                <TextBlock Text="{Binding Hint}" FontSize="10" Foreground="#6E6E73" TextTrimming="CharacterEllipsis">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
                                             <Style.Triggers>
@@ -57,14 +57,18 @@
                     <StackPanel>
                         <TextBlock Text="Database offline" FontSize="13" FontWeight="Bold" Foreground="#1C1C1E" Margin="0,0,0,4"/>
                         <TextBlock x:Name="OfflineTxt" Style="{StaticResource BodyTxt}"/>
-                        <Button Content="Go to Home" Style="{StaticResource GlassBtn}" HorizontalAlignment="Left" Margin="0,8,0,0" Click="GoHome_Click"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <Button Content="Go to Home" Style="{StaticResource GlassBtnPrimary}" Click="GoHome_Click"/>
+                            <Button Content="Edit cars offline" Style="{StaticResource GlassBtn}" Margin="6,0,0,0" Click="GoCars_Click"
+                                    ToolTip="The Cars page changes car values without the game; they apply on the next start"/>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
             </Grid>
         </Border>
 
         <!-- ═══════════ WORKSPACE ═══════════ -->
-        <Grid Grid.Column="1" Margin="12,10,12,10">
+        <Grid x:Name="Workspace" Grid.Column="1" Margin="12,10,12,10">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition/>
@@ -81,7 +85,7 @@
                 </Border>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                     <Border Style="{StaticResource BadgeLive}" Margin="0"><TextBlock Text="Live" Foreground="#1E8E3E" Style="{StaticResource BadgeTxt}"/></Border>
-                    <TextBlock Text="Edits apply instantly · last until the game closes · undo any time" FontSize="11" Foreground="#8E8E93" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="Edits apply instantly · last until the game closes · undo any time" FontSize="11" Foreground="#6E6E73" Margin="6,0,0,0" VerticalAlignment="Center"/>
                 </StackPanel>
             </Grid>
 
@@ -100,7 +104,7 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock x:Name="TableTitle" Text="Pick a table on the left" FontSize="18" FontWeight="Bold" Foreground="#1C1C1E" VerticalAlignment="Center"/>
-                    <TextBlock x:Name="RowCountTxt" Grid.Column="1" FontSize="12" Foreground="#8E8E93" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="RowCountTxt" Grid.Column="1" FontSize="12" Foreground="#6E6E73" Margin="10,0,0,0" VerticalAlignment="Center"/>
                     <Button Grid.Column="2" Content="Refresh" Style="{StaticResource GlassBtn}" Click="Refresh_Click"/>
                 </Grid>
                 <Grid Grid.Row="1" Margin="0,0,0,6">
@@ -112,7 +116,7 @@
                     <Grid>
                         <TextBox x:Name="FilterBox" Style="{StaticResource GlassTextBox}" FontSize="12" Padding="10,6" FontFamily="Consolas"
                                  TextChanged="FilterBox_TextChanged" KeyDown="FilterBox_KeyDown"/>
-                        <TextBlock x:Name="FilterHint" Text="Only show rows where…  e.g.  TorqueDropOffScale1 &gt; 0.5" FontSize="12" Foreground="#8E8E93"
+                        <TextBlock x:Name="FilterHint" Text="Only show rows where…  e.g.  TorqueDropOffScale1 &gt; 0.5" FontSize="12" Foreground="#6E6E73"
                                    Margin="12,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
                     </Grid>
                     <Button Grid.Column="1" Content="Filter" Style="{StaticResource GlassBtn}" Click="ApplyFilter_Click"/>
@@ -187,7 +191,7 @@
                                                     <ColumnDefinition Width="Auto"/>
                                                 </Grid.ColumnDefinitions>
                                                 <StackPanel VerticalAlignment="Center">
-                                                    <TextBlock Text="{Binding TimeText}" FontSize="11" Foreground="#8E8E93"/>
+                                                    <TextBlock Text="{Binding TimeText}" FontSize="11" Foreground="#6E6E73"/>
                                                     <TextBlock Text="{Binding State}" FontSize="10" FontWeight="SemiBold" Foreground="#C96F00" TextWrapping="Wrap"/>
                                                 </StackPanel>
                                                 <StackPanel Grid.Column="1">

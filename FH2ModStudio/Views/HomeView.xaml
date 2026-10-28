@@ -23,7 +23,7 @@
                             </Border>
                             <StackPanel VerticalAlignment="Center">
                                 <TextBlock Text="Start Azimuth" FontSize="13" FontWeight="SemiBold" Foreground="#1C1C1E"/>
-                                <TextBlock x:Name="Step1Sub" FontSize="11" Foreground="#8E8E93"/>
+                                <TextBlock x:Name="Step1Sub" FontSize="11" Foreground="#6E6E73"/>
                             </StackPanel>
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal">
@@ -32,7 +32,7 @@
                             </Border>
                             <StackPanel VerticalAlignment="Center">
                                 <TextBlock Text="Mods loaded" FontSize="13" FontWeight="SemiBold" Foreground="#1C1C1E"/>
-                                <TextBlock x:Name="Step2Sub" FontSize="11" Foreground="#8E8E93"/>
+                                <TextBlock x:Name="Step2Sub" FontSize="11" Foreground="#6E6E73"/>
                             </StackPanel>
                         </StackPanel>
                         <StackPanel Grid.Column="2" Orientation="Horizontal">
@@ -41,7 +41,7 @@
                             </Border>
                             <StackPanel VerticalAlignment="Center">
                                 <TextBlock Text="In game" FontSize="13" FontWeight="SemiBold" Foreground="#1C1C1E"/>
-                                <TextBlock x:Name="Step3Sub" FontSize="11" Foreground="#8E8E93"/>
+                                <TextBlock x:Name="Step3Sub" FontSize="11" Foreground="#6E6E73"/>
                             </StackPanel>
                         </StackPanel>
                     </Grid>

@@ -17,7 +17,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel>
                         <StackPanel Orientation="Horizontal">
-                            <Ellipse x:Name="SetupDot" Width="8" Height="8" Fill="#8E8E93" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <Ellipse x:Name="SetupDot" Width="8" Height="8" Fill="#6E6E73" VerticalAlignment="Center" Margin="0,0,8,0"/>
                             <TextBlock x:Name="SetupTitle" Text="Checking the porter…" FontSize="13" FontWeight="SemiBold" Foreground="#1C1C1E"/>
                         </StackPanel>
                         <TextBlock x:Name="SetupDetail" Style="{StaticResource BodyTxt}" FontSize="11" Margin="16,4,0,0" TextWrapping="Wrap"/>
@@ -63,7 +63,7 @@
                         </StackPanel>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                        <Button Content="Choose folder…" Style="{StaticResource GlassBtn}" Margin="0,0,6,0" Click="ChooseFolder_Click"
+                        <Button Content="Porter folder…" Style="{StaticResource GlassBtn}" Margin="0,0,6,0" Click="ChooseFolder_Click"
                                 ToolTip="The folder that contains fh3port.py (normally fh2sql\fh3port)"/>
                         <Button Content="Check again" Style="{StaticResource GlassBtn}" Click="Recheck_Click"/>
                     </StackPanel>
@@ -82,7 +82,7 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel>
                             <TextBlock Text="Search (make, model, year or MediaName)" Style="{StaticResource CaptionTxt}"/>
-                            <TextBox x:Name="SearchBox" Style="{StaticResource GlassTextBox}" TextChanged="Filter_Changed"/>
+                            <TextBox x:Name="SearchBox" Style="{StaticResource GlassTextBox}" FontSize="12" Padding="10,6" TextChanged="Filter_Changed"/>
                         </StackPanel>
                         <StackPanel Grid.Column="2">
                             <TextBlock Text="Show" Style="{StaticResource CaptionTxt}"/>
@@ -101,17 +101,28 @@
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <StackPanel>
-                            <TextBlock x:Name="CarComboCaption" Text="Car" Style="{StaticResource CaptionTxt}"/>
-                            <ComboBox x:Name="CarCombo" Style="{StaticResource GlassCombo}" MaxDropDownHeight="420"
-                                      SelectionChanged="CarCombo_SelectionChanged"/>
-                        </StackPanel>
+                        <TextBlock x:Name="CarComboCaption" Text="Cars" Style="{StaticResource CaptionTxt}" VerticalAlignment="Bottom"/>
                         <Button x:Name="AddBtn" Grid.Column="1" Content="Add" Style="{StaticResource GlassBtnPrimary}" Padding="18,7"
-                                Margin="8,0,0,3" VerticalAlignment="Bottom" Click="Add_Click" IsEnabled="False"/>
+                                Margin="8,0,0,3" VerticalAlignment="Bottom" Click="Add_Click" IsEnabled="False"
+                                ToolTip="Adds the selected cars (Ctrl/Shift-click to pick several, or double-click a car)"/>
                         <Button x:Name="AddZipBtn" Grid.Column="2" Content="Add zip file…" Style="{StaticResource GlassBtn}" Padding="12,7"
                                 Margin="6,0,0,3" VerticalAlignment="Bottom" Click="AddZip_Click"
                                 ToolTip="Pick a Forza Horizon 3 car zip from anywhere on disk (named like FH3 names it, e.g. por_918spyder_14.zip)"/>
                     </Grid>
+                    <ListBox x:Name="CarCombo" Height="230" Margin="0,4,0,0" SelectionMode="Extended" Background="#60FFFFFF"
+                             BorderBrush="#30000000" BorderThickness="1" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             SelectionChanged="CarCombo_SelectionChanged" MouseDoubleClick="CarList_DoubleClick" KeyDown="CarList_KeyDown">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="2,2">
+                                    <TextBlock Text="{Binding Title}" FontSize="12" FontWeight="SemiBold" Foreground="#1C1C1E"/>
+                                    <TextBlock FontSize="10" Foreground="#6E6E73">
+                                        <Run Text="{Binding Media, Mode=OneWay}"/><Run Text="  ·  class "/><Run Text="{Binding Class, Mode=OneWay}"/><Run Text="  ·  "/><Run Text="{Binding StatusText, Mode=OneWay}"/>
+                                    </TextBlock>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
                     <TextBlock x:Name="CarInfo" Style="{StaticResource BodyTxt}" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"/>
 
                     <Separator Margin="0,10"/>
@@ -134,10 +145,10 @@
                                         </Grid.ColumnDefinitions>
                                         <StackPanel>
                                             <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold" Foreground="#1C1C1E"/>
-                                            <TextBlock FontSize="11" Foreground="#8E8E93">
+                                            <TextBlock FontSize="11" Foreground="#6E6E73">
                                                 <Run Text="{Binding Media, Mode=OneWay}"/><Run Text="  ·  class "/><Run Text="{Binding Class, Mode=OneWay}"/><Run Text="  ·  "/><Run Text="{Binding StatusText, Mode=OneWay}"/>
                                             </TextBlock>
-                                            <TextBlock Text="{Binding SourceText, Mode=OneWay}" FontSize="11" Foreground="#8E8E93" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding SourceText, Mode=OneWay}" FontSize="11" Foreground="#6E6E73" TextTrimming="CharacterEllipsis"/>
                                         </StackPanel>
                                         <Button Grid.Column="1" Content="Remove" Style="{StaticResource GlassBtn}" Tag="{Binding}" Click="Remove_Click"/>
                                     </Grid>
@@ -173,7 +184,7 @@
             <Border x:Name="ResultCard" Style="{StaticResource GlassCard}" Margin="0,0,0,8" Visibility="Collapsed">
                 <StackPanel>
                     <StackPanel Orientation="Horizontal">
-                        <Ellipse x:Name="ResultDot" Width="8" Height="8" Fill="#8E8E93" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <Ellipse x:Name="ResultDot" Width="8" Height="8" Fill="#6E6E73" VerticalAlignment="Center" Margin="0,0,8,0"/>
                         <TextBlock x:Name="ResultTitle" FontSize="13" FontWeight="SemiBold" Foreground="#1C1C1E"/>
                     </StackPanel>
                     <ProgressBar x:Name="Progress" Height="4" Margin="0,8,0,4" IsIndeterminate="True" Visibility="Collapsed"/>

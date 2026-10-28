@@ -252,18 +252,22 @@ public partial class PortView : UserControl
             .OrderBy(c => c.Make).ThenBy(c => c.Model).ThenBy(c => c.Year)
             .ToList();
         CarCombo.ItemsSource = list;
-        CarComboCaption.Text = $"Car ({list.Count} matching)";
+        CarComboCaption.Text = list.Count == 0 ? "No car matches - change the search or \"Show\"" : $"Cars ({list.Count} matching) - double-click to add, Ctrl/Shift-click for several";
         if (list.Count == 1) CarCombo.SelectedIndex = 0;
         UpdateCarInfo();
     }
 
     private void CarCombo_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateCarInfo();
 
+    private List<Fh3Car> PickedCars() => CarCombo.SelectedItems.OfType<Fh3Car>().Where(c => !_chosen.Contains(c)).ToList();
+
     private void UpdateCarInfo()
     {
-        var c = CarCombo.SelectedItem as Fh3Car;
-        AddBtn.IsEnabled = c != null && !_chosen.Contains(c);
-        CarInfo.Text = c == null ? "" :
+        var picked = PickedCars();
+        AddBtn.IsEnabled = picked.Count > 0;
+        AddBtn.Content = picked.Count > 1 ? $"Add {picked.Count}" : "Add";
+        var c = CarCombo.SelectedItems.Count == 1 ? CarCombo.SelectedItem as Fh3Car : null;
+        CarInfo.Text = c == null ? (CarCombo.SelectedItems.Count > 1 ? $"{CarCombo.SelectedItems.Count} cars selected" : "") :
             $"{c.Media}  ·  class {c.Class}  ·  {c.StatusText}" +
             (c.Status == "ported" ? "  -  converting again replaces the installed version" : "") +
             (c.Status == "in_fh2" ? "  -  FH2 has this car; the FH3 version (with FH3's body kits and parts) replaces it, FH2's is backed up and comes back with Undo" : "") +
@@ -272,9 +276,21 @@ public partial class PortView : UserControl
 
     private void Add_Click(object sender, RoutedEventArgs e)
     {
-        if (CarCombo.SelectedItem is Fh3Car c && !_chosen.Contains(c)) _chosen.Add(c);
+        foreach (var c in PickedCars()) _chosen.Add(c);
         UpdateCarInfo();
         UpdateRunState();
+    }
+
+    private void CarList_DoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if ((e.OriginalSource as FrameworkElement)?.DataContext is Fh3Car) Add_Click(sender, e);
+    }
+
+    private void CarList_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key != System.Windows.Input.Key.Enter) return;
+        Add_Click(sender, e);
+        e.Handled = true;
     }
 
     private void AddZip_Click(object sender, RoutedEventArgs e)
