@@ -143,7 +143,7 @@ public static class BodyParts
     {
         if (s.BodyPartMeshes.ContainsKey(ids.Media)) return true;
         var now = PartRows(db, ids);
-        if (now.Any(r => r.List.Any(x => x[3] == 0))) return true;
+        if (now.Any(r => r.List.Any(x => x[3] == 0 || x[1] == 4))) return true;
         var stockIds = PartRows(stock, ids).SelectMany(r => r.List.Select(x => x[0])).ToHashSet();
         return now.Any(r => r.List.Any(x => !stockIds.Contains(x[0])));
     }
@@ -157,7 +157,7 @@ public static class BodyParts
         var parts = new List<object>();
         foreach (var r in rows)
         {
-            bool removal = r.List.Any(x => x[3] == 0);
+            bool removal = r.List.Any(x => x[3] == 0 || x[1] == 4);
             var models = SavedMeshes(s, ids.Media, r.Part.Key);
             if (removal && models.Count == 0 && !(s.BodyPartMeshes.TryGetValue(ids.Media, out var p) && p.ContainsKey(r.Part.Key)))
             {

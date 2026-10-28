@@ -164,10 +164,14 @@ def apply_parts(d, parts):
     for spec in parts:
         pid = PARTS[spec["part"]]
         rows = [(int(r[0]), int(r[1]), int(r[2]), int(r[3]) if len(r) > 3 else 1) for r in spec.get("rows", [])]
-        removal = {i for i, _, _, gfx in rows if gfx == 0} | {int(x) for x in spec.get("removal", [])}
+        u = next((x for x in s["uparts"] if x["id"] == pid), None)
+        known_rows = {g["row"] for g in u["upgrades"]} if u else set()
+        # removals: RequiresGraphics 0, or level 4 the .carbin doesn't know (every stock level-4 wing / bumper row is a
+        # removal; a user may have switched the flag back on)
+        removal = {i for i, lv, _, gfx in rows if gfx == 0 or (lv == 4 and i not in known_rows)} | \
+                  {int(x) for x in spec.get("removal", [])}
         body = int(spec.get("body", -1)) & 0xFFFFFFFF
         want = {m.lower() for m in spec.get("models", [])} if removal else set()
-        u = next((x for x in s["uparts"] if x["id"] == pid), None)
         if u is None:
             if not removal:
                 continue    # nothing tagged, nothing to hide: every row draws the same body-part meshes

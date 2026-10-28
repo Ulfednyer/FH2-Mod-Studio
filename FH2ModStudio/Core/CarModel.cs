@@ -525,11 +525,11 @@ public static class CarModel
             }
         }
 
+        // per table: body-part tables are keyed by CarBodyId, not the group's Ordinal (with the group's clause their
+        // query failed and added hood / bumper / skirt rows were never saved)
         foreach (var group in Sections.SelectMany(s => s.Groups))
-        {
-            if (group.Where(ids) is not { } where) continue;
-            foreach (var table in group.Tables) DiffTable(table, group.KeyColumn, where);
-        }
+            foreach (var table in group.Tables)
+                if (group.GetWhere(table, ids) is { } where) DiffTable(table, group.KeyColumn, where);
 
         // extra bodies (shop spacer copies) and everything keyed to them
         var bodies = current.Query($"SELECT CarBodyID FROM List_UpgradeCarBody WHERE Ordinal = {ids.CarId} AND CarBodyID <> {ids.BodyId ?? -1};", out _);
