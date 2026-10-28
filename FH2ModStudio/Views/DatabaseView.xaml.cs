@@ -29,6 +29,14 @@ public partial class DatabaseView : UserControl
     private string _browseSelect = "";
     private readonly Dictionary<string, Dictionary<int, string>> _stringCache = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<string, double> _colWidths = new();
+    // search box: applied WHERE clause (also used by "Scale a column"), refreshed shortly after each keystroke
+    private string _where = "";
+    private readonly System.Windows.Threading.DispatcherTimer _searchTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
+    private readonly Dictionary<string, List<string>> _tableColumns = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, HashSet<string>> _idColumns = new(StringComparer.OrdinalIgnoreCase);
+    // header click sorting: done by the game's database (ORDER BY) so it covers every row, not just the loaded pages
+    private string? _sortColumn;
+    private bool _sortDesc;
     private MainWindow _main = null!;
     private SessionStatus _status = new(GameState.NotRunning, false, false, 0, null);
     private List<TableEntry> _tables = new();
@@ -40,6 +48,8 @@ public partial class DatabaseView : UserControl
     {
         InitializeComponent();
         BrowseGrid.AddHandler(ScrollViewer.ScrollChangedEvent, new ScrollChangedEventHandler(BrowseGrid_ScrollChanged));
+        BrowseGrid.Sorting += BrowseGrid_Sorting;
+        _searchTimer.Tick += (_, _) => { _searchTimer.Stop(); _ = LoadBrowseAsync(quiet: true); };
     }
 
     private SqlPipe Sql => _main.Session.Sql;
@@ -128,29 +138,81 @@ public partial class DatabaseView : UserControl
     {
         if (TableList.SelectedItem is not TableEntry t) return;
         _table = t.Name;
+        _sortColumn = null;
+        _searchTimer.Stop();
         FilterBox.Text = "";
+        _searchTimer.Stop();
         BrowseSeg.IsChecked = true;
         _ = LoadBrowseAsync();
     }
 
-    private string WhereClause => string.IsNullOrWhiteSpace(FilterBox.Text) ? "" : " WHERE " + FilterBox.Text.Trim().TrimEnd(';');
+    private string WhereClause => _where;
 
-    private async Task LoadBrowseAsync()
+    private static readonly Regex SqlCondition = new(@"[<>=!]|\b(and|or|not|like|glob|in|is|between|null)\b|^\s*\w+\s*\(", RegexOptions.IgnoreCase);
+
+    /// <summary>The search box as a WHERE clause. A condition ("Year &gt; 2010", "MediaName LIKE 'LAM%'") is used as it
+    /// is; anything else is searched for in every column: a whole number exactly (a car id finds its row), text as part
+    /// of any value - including the names behind string ids ("Gallardo" finds the row whose DisplayName is _&amp;...).</summary>
+    private async Task<string> BuildWhereAsync(string table, string text)
+    {
+        text = text.Trim().TrimEnd(';').Trim();
+        if (text.Length == 0) return "";
+        if (SqlCondition.IsMatch(text)) return " WHERE " + text;
+        if (!_tableColumns.TryGetValue(table, out var cols))
+        {
+            var r = await Sql.ExecuteAsync($"PRAGMA table_info({DbHistory.QuoteIdent(table)});");
+            cols = r.Ok && r.Results.Count > 0 ? r.Results[0].Rows.Select(row => row[1] ?? "").Where(c => c.Length > 0).ToList() : new();
+            _tableColumns[table] = cols;
+        }
+        if (cols.Count == 0) return "";
+        var parts = new List<string>();
+        if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var number))
+            parts.AddRange(cols.Select(c => $"{DbHistory.QuoteIdent(c)} = {number}"));
+        else
+        {
+            var like = DbHistory.Literal("%" + text.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_") + "%");
+            parts.AddRange(cols.Select(c => $"{DbHistory.QuoteIdent(c)} LIKE {like} ESCAPE '\\'"));
+            // string-id columns: ids whose text contains the search (key = low 16 bits of the id)
+            var strings = Strings(table);
+            var keys = strings.Where(kv => kv.Value.Contains(text, StringComparison.OrdinalIgnoreCase)).Select(kv => kv.Key).Take(400).ToList();
+            if (keys.Count > 0 && _idColumns.TryGetValue(table, out var idCols))
+                parts.AddRange(idCols.Select(c => $"(substr({DbHistory.QuoteIdent(c)}, 1, 2) = '_&' AND " +
+                                                  $"(CAST(substr({DbHistory.QuoteIdent(c)}, 3) AS INTEGER) & 65535) IN ({string.Join(",", keys)}))"));
+        }
+        return " WHERE " + string.Join(" OR ", parts);
+    }
+
+    private string OrderBy => _sortColumn == null ? " ORDER BY rowid" : $" ORDER BY {DbHistory.QuoteIdent(_sortColumn)}{(_sortDesc ? " DESC" : "")}, rowid";
+
+    /// <param name="quiet">while typing: a search that doesn't parse yet ("Year &gt;") keeps the rows shown and only
+    /// says so next to the row count</param>
+    private async Task LoadBrowseAsync(bool quiet = false)
     {
         if (_table == null) return;
         int token = ++_browseToken;
-        var q = DbHistory.QuoteIdent(_table);
-        TableTitle.Text = _table;
-        var count = await Sql.ExecuteAsync($"SELECT COUNT(*) FROM {q}{WhereClause};");
-        _browseSelect = $"SELECT rowid AS __rowid, * FROM {q}{WhereClause} ORDER BY rowid";
-        var r = await Sql.ExecuteAsync($"{_browseSelect} LIMIT {PageSize};");
-        _browseEditable = r.Ok;
+        var table = _table;
+        var q = DbHistory.QuoteIdent(table);
+        TableTitle.Text = table;
+        var where = await BuildWhereAsync(table, FilterBox.Text);
+        if (token != _browseToken) return;
+        var count = await Sql.ExecuteAsync($"SELECT COUNT(*) FROM {q}{where};");
+        var select = $"SELECT rowid AS __rowid, * FROM {q}{where}{OrderBy}";
+        var r = await Sql.ExecuteAsync($"{select} LIMIT {PageSize};");
+        bool editable = r.Ok;
         if (!r.Ok)
         {
-            _browseSelect = $"SELECT * FROM {q}{WhereClause}";
-            r = await Sql.ExecuteAsync($"{_browseSelect} LIMIT {PageSize};");
+            select = $"SELECT * FROM {q}{where}" + (_sortColumn != null ? $" ORDER BY {DbHistory.QuoteIdent(_sortColumn)}{(_sortDesc ? " DESC" : "")}" : "");
+            r = await Sql.ExecuteAsync($"{select} LIMIT {PageSize};");
         }
         if (token != _browseToken) return;
+        if (quiet && !r.Ok)
+        {
+            RowCountTxt.Text = "search not complete yet: " + (r.Error ?? "").Split('\n')[0];
+            return;
+        }
+        _where = where;
+        _browseSelect = select;
+        _browseEditable = editable;
         if (!r.Ok || r.Results.Count == 0)
         {
             RowCountTxt.Text = "";
@@ -218,7 +280,9 @@ public partial class DatabaseView : UserControl
             dt.Columns.Add(name, typeof(string));
             int len = Math.Max(name.Length, first.Rows.Select(row => row[i]?.Length ?? 4).DefaultIfEmpty(4).Max());
             _colWidths[name] = Math.Clamp(len * 7 + 18, 48, 320);
-            if (strings.Count > 0 && first.Rows.Any(row => row[i] is { } v && v.StartsWith("_&", StringComparison.Ordinal)))
+            if (!_idColumns.TryGetValue(_table!, out var idCols)) _idColumns[_table!] = idCols = new(StringComparer.OrdinalIgnoreCase);
+            if (first.Rows.Any(row => row[i] is { } v && v.StartsWith("_&", StringComparison.Ordinal))) idCols.Add(c);
+            if (strings.Count > 0 && idCols.Contains(c))
             {
                 var textCol = dt.Columns.Add(name + TextSuffix, typeof(string));
                 textCol.ExtendedProperties["source"] = i;
@@ -257,18 +321,30 @@ public partial class DatabaseView : UserControl
         return d;
     }
 
-    private static DataTable ToDataTable(SqlResult r)
+    /// <param name="typed">columns whose values are all numbers become long / double, so clicking a header sorts
+    /// 2 before 10 (read-only results; the browse grid keeps text for editing)</param>
+    private static DataTable ToDataTable(SqlResult r, bool typed = false)
     {
         var dt = new DataTable();
         var names = new HashSet<string>();
-        foreach (var c in r.Columns)
+        var kinds = new Type[r.Columns.Count];
+        for (int k = 0; k < r.Columns.Count; k++)
         {
+            var c = r.Columns[k];
             var name = c;
             for (int i = 2; !names.Add(name); i++) name = $"{c} ({i})";
-            dt.Columns.Add(name, typeof(string));
+            var values = r.Rows.Select(row => row[k]).Where(v => v != null).ToList();
+            kinds[k] = !typed || values.Count == 0 ? typeof(string)
+                : values.All(v => long.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)) ? typeof(long)
+                : values.All(v => double.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out _)) ? typeof(double)
+                : typeof(string);
+            dt.Columns.Add(name, kinds[k]);
         }
+        object Convert(string? v, Type t) => v == null ? DBNull.Value
+            : t == typeof(long) ? long.Parse(v, CultureInfo.InvariantCulture)
+            : t == typeof(double) ? double.Parse(v, CultureInfo.InvariantCulture) : v;
         dt.BeginLoadData();
-        foreach (var row in r.Rows) dt.Rows.Add(row.Select(v => (object?)v ?? DBNull.Value).ToArray());
+        foreach (var row in r.Rows) dt.Rows.Add(row.Select((v, k) => Convert(v, kinds[k])).ToArray());
         dt.EndLoadData();
         return dt;
     }
@@ -278,6 +354,8 @@ public partial class DatabaseView : UserControl
         if (e.PropertyName == "__rowid") { e.Cancel = true; return; }
         e.Column.Header = e.PropertyName;
         if (sender == BrowseGrid && _colWidths.TryGetValue(e.PropertyName, out var w)) e.Column.Width = new DataGridLength(w);
+        if (sender == BrowseGrid && _sortColumn != null && e.PropertyName == _sortColumn)
+            e.Column.SortDirection = _sortDesc ? System.ComponentModel.ListSortDirection.Descending : System.ComponentModel.ListSortDirection.Ascending;
         if (e.PropertyName.EndsWith(TextSuffix, StringComparison.Ordinal))
         {
             e.Column.IsReadOnly = true;   // shown from the string tables; edit the id column next to it
@@ -310,15 +388,32 @@ public partial class DatabaseView : UserControl
         _main.SetStatus($"Changed {desc} (live). Undo it under History & saved mods.");
     }
 
-    private void FilterBox_TextChanged(object sender, TextChangedEventArgs e) =>
+    private void FilterBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
         FilterHint.Visibility = FilterBox.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (_table == null) return;
+        _searchTimer.Stop();   // refresh 250 ms after the last keystroke
+        _searchTimer.Start();
+    }
+
+    private void BrowseGrid_Sorting(object sender, DataGridSortingEventArgs e)
+    {
+        e.Handled = true;
+        var column = e.Column.Header as string;
+        if (column == null || _table == null) return;
+        if (column.EndsWith(TextSuffix, StringComparison.Ordinal)) column = column[..^TextSuffix.Length];   // text column: its id
+        _sortDesc = _sortColumn == column && !_sortDesc;   // first click ascending, every further click flips
+        _sortColumn = column;
+        _ = LoadBrowseAsync();
+    }
 
     private void FilterBox_KeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Enter) _ = LoadBrowseAsync();
+        if (e.Key == Key.Escape) FilterBox.Text = "";
+        if (e.Key == Key.Enter) { _searchTimer.Stop(); _ = LoadBrowseAsync(); }
     }
 
-    private void ApplyFilter_Click(object sender, RoutedEventArgs e) => _ = LoadBrowseAsync();
+    private void ClearSearch_Click(object sender, RoutedEventArgs e) => FilterBox.Text = "";
     private void Refresh_Click(object sender, RoutedEventArgs e) => _ = LoadBrowseAsync();
 
     // ───────────── scale helper ─────────────
@@ -425,7 +520,7 @@ public partial class DatabaseView : UserControl
             return;
         }
         var last = r.Results.LastOrDefault(x => x.Columns.Count > 0);
-        SqlGrid.ItemsSource = last != null ? ToDataTable(last).DefaultView : null;
+        SqlGrid.ItemsSource = last != null ? ToDataTable(last, typed: true).DefaultView : null;
         SqlMessage.Text = last != null
             ? $"{last.Rows.Count} row(s){(last.Truncated ? " (truncated)" : "")}"
             : "Done." + (warnings.Count > 0 ? " Note: " + warnings[0] : "");

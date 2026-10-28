@@ -116,10 +116,10 @@
                     <Grid>
                         <TextBox x:Name="FilterBox" Style="{StaticResource GlassTextBox}" FontSize="12" Padding="10,6" FontFamily="Consolas"
                                  TextChanged="FilterBox_TextChanged" KeyDown="FilterBox_KeyDown"/>
-                        <TextBlock x:Name="FilterHint" Text="Only show rows where…  e.g.  TorqueDropOffScale1 &gt; 0.5" FontSize="12" Foreground="#6E6E73"
+                        <TextBlock x:Name="FilterHint" Text="Search this table: a MediaName, a car id, a name (Gallardo) - or a condition like  Year &gt; 2010" FontSize="12" Foreground="#6E6E73"
                                    Margin="12,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
                     </Grid>
-                    <Button Grid.Column="1" Content="Filter" Style="{StaticResource GlassBtn}" Click="ApplyFilter_Click"/>
+                    <Button Grid.Column="1" Content="Clear" Style="{StaticResource GlassBtn}" Click="ClearSearch_Click" ToolTip="Show all rows again (Esc)"/>
                     <Button Grid.Column="2" x:Name="ScaleToggleBtn" Content="Scale a column ▾" Style="{StaticResource GlassBtn}" Click="ScaleToggle_Click"/>
                 </Grid>
                 <DataGrid x:Name="BrowseGrid" Grid.Row="2" Style="{StaticResource GlassGrid}"
