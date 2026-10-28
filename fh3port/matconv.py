@@ -61,11 +61,12 @@ def fh2_global_textures(materials_zips):
     return _global_cache[key]
 
 
-def resolve_texture(path, car_files, fh2_global):
-    """The texture path FH2 can load for an FH3 texture path (the porter copies missing cars\\_library ones), or None."""
+def resolve_texture(path, car_files, fh2_global, lib_ok=lambda path: True):
+    """The texture path FH2 can load for an FH3 texture path, or None. lib_ok: is a cars\\_library texture in FH2 or
+    copyable from FH3 (FH3 references some that ship nowhere)."""
     low = path.lower()
     if low.startswith(LIB_TEX):
-        return path
+        return path if lib_ok(path) else None
     if low.startswith(GLOBAL_TEX):
         paths, guids = fh2_global
         if low in paths:
@@ -93,7 +94,9 @@ FAMILY = {
     "int_ch1_dualsurface_diffuse": "ch1", "int_ch1_dualsurface_simple": "ch1", "w_int_ch1_dualsurface_simple": "ch1",
     "int_ch1_normopacity": "ch1", "fabric_diffusetexture": "ch1", "int_ch1diffusemap": "ch1",
     "int_grille": "ch1", "ext_grille": "ch1",
-    "int_ch2_norm_diffuse": "ch1",                       # textured leather (Zenvo ST1 seats): diffuse texture only
+    "int_ch2_norm_diffuse": "ch1",
+    "ch1_normalpha_color": "ch1",                        # Hoonicorn rims (converter wrote an empty shader path)
+    "car_cf_composite_interior": "car_cf_interior",                       # textured leather (Zenvo ST1 seats): diffuse texture only
     # sun strips: FH2 has no banner shader -> car paint drawing the strip's texture (as for race liveries)
     "car_windsheildbanner": "carpaint_standard", "car_windsheildbanner_livery": "carpaint_standard",
 }
@@ -122,10 +125,11 @@ RENAME = {
     "CH2NormalTiling": [["NormalTiling"]],
     "DiffuseTextureSwitchBool": [["DiffuseTextureSwitchBool"], ["CH1DiffuseTextureSwitchBool"]],
     0x54969DE6: [["DiffuseATiling"]],                    # int_ch2_norm_diffuse: unnamed diffuse tiling
+    # dual-surface materials (metal and non-metal half picked by a mask; "_alloptions", Hoonicorn engine): FH2's ch1
+    # shader has the same two halves, A = metal, B = non-metal (FH2's copies of the same library materials)
+    "F0_Metal": [["F0a"], ["F0aVector4"]], "F0_NonMetal": [["F0b"], ["F0bVector4"]],
+    "Gloss_Metal": [["GlossA_floatVal"]], "Gloss_NonMetal": [["GlossB_floatVal"]],
 }
-# dual-surface shaders (metal and non-metal half): the half that matches the chosen FH2 shader
-DUAL = {False: {"F0_NonMetal": "F0Vector4", "Gloss_NonMetal": "Gloss_floatVal"},
-        True: {"F0_Metal": "F0Vector4", "Gloss_Metal": "Gloss_floatVal"}}
 
 _BY_NAME = {}
 for _h, _n in NAMES.items():
@@ -168,7 +172,10 @@ def _shader_of(data):
     return None
 
 
-def is_metal(fh3_shader, params):
+METAL_NAMES = ("metal", "chrome", "alumin", "steel", "titanium", "brass")
+
+
+def is_metal(fh3_shader, params, rel=""):
     if fh3_shader in ALWAYS_METAL:
         return True
     for h, typ, payload in params:
@@ -177,7 +184,8 @@ def is_metal(fh3_shader, params):
     for h, typ, payload in params:
         if h == _F0 and typ == 0:
             return max(struct.unpack_from("<3f", payload)) >= 0.2
-    return False
+    # no reflectance in the material (set per instance): go by the name
+    return rel.lower().rsplit("/", 1)[-1].startswith(METAL_NAMES)
 
 
 def convert_params(params, shader, metal):
@@ -185,9 +193,6 @@ def convert_params(params, shader, metal):
     named = {}
     for h, typ, payload in params:
         n = NAMES.get(h)
-        n = DUAL[metal].get(n, n) if n else n
-        if n in DUAL[not metal]:
-            continue
         named.setdefault(n or h, (h, typ, payload))
     out, renamed = {}, []
     for key, (h, typ, payload) in named.items():
@@ -216,6 +221,23 @@ def convert_params(params, shader, metal):
             if t:
                 out.setdefault(t, (typ, payload))
     return [(h, typ, payload) for h, (typ, payload) in out.items()]
+
+
+# FH3 "DirectAO" / "LocalAO0" switches take occlusion from the normal map; FH2's same-named switches multiply by an AO
+# texture parameter instead, whose default (defaultshader_glos) is dark -> converted seats/dash nearly black (RWB 911
+# seats, Focus RS RX). FH3 materials never set that texture, so the switch goes off unless the texture is set.
+AO_SWITCH = {"CH2DirectAOSwitchBool": "AOTexture", "CH1LocalAOSwitch0Bool": "LocalAOTexture"}
+
+
+def ao_switches_off(params):
+    have = {NAMES.get(h) for h, _, _ in params}
+    out = []
+    for h, typ, payload in params:
+        tex = AO_SWITCH.get(NAMES.get(h))
+        if tex and typ == 3 and tex not in have:
+            payload = struct.pack("<i", 0)
+        out.append((h, typ, payload))
+    return out
 
 
 def build_blob(params, trailer):
@@ -252,7 +274,36 @@ class Shaders:
         return self.cache[name]
 
 
-def convert_material(fh2_data, fh3_data, rel, shaders, resolve=lambda path: path):
+GRILLES = {"ext_grille", "int_grille"}
+_FILL = [h for h, n in NAMES.items() if n == "FillSwitchBool"]
+
+
+def grille_cutout(params, shader, find_texture):
+    """FH3 grille shaders cut the holes out of the pattern by themselves (FillSwitchBool 0); FH2's grilles
+    (grilleplastic_012 ...) use the pattern's _opac texture as AlphaTexture with CH1OpacityMaskSwitchBool on and
+    alpha test (TSTA 1). Returns (params, alpha test?)."""
+    named = {NAMES.get(h): (h, typ, payload) for h, typ, payload in params}
+    normal = named.get("NormalTexture")
+    if not normal:
+        return params, False
+    path, end = _s7(normal[2], 0)
+    base = path.rsplit("\\", 1)[-1].lower()
+    if "_nrml_" not in base:
+        return params, False
+    opac = find_texture(base.split("_nrml_")[0] + "_opac_")
+    alpha, switch = _hash_in("AlphaTexture", shader), _hash_in("CH1OpacityMaskSwitchBool", shader)
+    if not (opac and alpha and switch):
+        return params, False
+    add = {alpha: (6, _str7(opac) + normal[2][end:]), switch: (3, struct.pack("<i", 1))}
+    tiling = named.get("NormalTiling")
+    a_tiling = _hash_in("AlphaTiling", shader)
+    if tiling and a_tiling:
+        add[a_tiling] = (tiling[1], tiling[2])
+    out = [(h, t, p) for h, t, p in params if h not in add]
+    return out + [(h, t, p) for h, (t, p) in add.items()], True
+
+
+def convert_material(fh2_data, fh3_data, rel, shaders, resolve=lambda path: path, find_texture=lambda stem: None):
     """Converter output (FH2 bundle) + FH3 original -> (new FH2 bundle, FH2 shader) or (None, reason)."""
     s3 = _shader_of(fh3_data)
     fam = FAMILY.get(s3)
@@ -260,7 +311,7 @@ def convert_material(fh2_data, fh3_data, rel, shaders, resolve=lambda path: path
         return None, "FH3 shader %s not handled" % s3
     blob3, ver3 = _mtpr_of(fh3_data)
     params3, trailer = _params(blob3, ver3)
-    metal = is_metal(s3, params3)
+    metal = is_metal(s3, params3, rel)
     interior = rel.lower().startswith(("interior", "wetinterior"))
     target = TARGET.get((fam, metal, interior), fam)              # a family or one fixed FH2 shader
     if target not in shaders.names:
@@ -272,10 +323,17 @@ def convert_material(fh2_data, fh3_data, rel, shaders, resolve=lambda path: path
             if payload is None:                                     # unloadable texture -> the shader's default
                 continue
         params2.append((h, typ, payload))
+    params2 = ao_switches_off(params2)
+    alpha_test = False
+    filled = any(h in _FILL and struct.unpack_from("<i", p)[0] for h, t, p in params3 if t == 3)
+    if s3 in GRILLES and not filled:
+        params2, alpha_test = grille_cutout(params2, shaders.bytes(target), find_texture)
     blobs = bundle.parse(fh2_data)
     for b in blobs:
         if b.tag[::-1] == b"MATL":
             b.data = _str7(shaders.path(target))
+            if alpha_test:
+                b.metas = [(t, v, b"\x01" if t == b"TSTA" else d) for t, v, d in b.metas]
         elif b.tag == b"RPTM":
             b.data, b.ver = build_blob(params2, trailer), (2, 0)
     return bundle.serialize(blobs), target
@@ -312,9 +370,11 @@ def restore_textures(fh2_data, fh3_data, resolve):
     return (bundle.serialize(blobs), swaps) if swaps else (fh2_data, [])
 
 
-def fix_zip(src, dst, fh3_car_zip, fh3_materials_zip, shaders_zip, fh2_materials_zips, remaps):
+def fix_zip(src, dst, fh3_car_zip, fh3_materials_zip, shaders_zip, fh2_materials_zips, remaps, lib_ok=lambda p: True,
+            find_texture=lambda stem: None):
     """remaps: [(rel, fh3 shader, converter shader, score)] from the converter report. Converts the remapped materials
-    FAMILY covers and restores swapped textures everywhere. Returns (log lines, set of converted rels)."""
+    FAMILY covers - and materials the converter left with a shader FH2 doesn't have (empty path, not in the report) -
+    and restores swapped textures everywhere. Returns (log lines, set of converted rels)."""
     shaders = Shaders(shaders_zip)
     fh2_global = fh2_global_textures(fh2_materials_zips)
     z3 = zipfile.ZipFile(fh3_car_zip)
@@ -334,7 +394,7 @@ def fix_zip(src, dst, fh3_car_zip, fh3_materials_zip, shaders_zip, fh2_materials
     log, converted, swapped = [], set(), 0
     with zipfile.ZipFile(src) as zin, zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zout:
         car_files = {n.lower() for n in zin.namelist()}
-        resolve = lambda path: resolve_texture(path, car_files, fh2_global)
+        resolve = lambda path: resolve_texture(path, car_files, fh2_global, lib_ok)
         for info in zin.infolist():
             data = zin.read(info)
             key = info.filename.lower()
@@ -342,8 +402,12 @@ def fix_zip(src, dst, fh3_car_zip, fh3_materials_zip, shaders_zip, fh2_materials
                 fh3 = fh3_source(info.filename)
                 if fh3 is not None:
                     try:
+                        if key not in remapped and key.startswith("materials/") and \
+                                _shader_of(data) not in shaders.names:
+                            remapped[key] = (info.filename[10:], _shader_of(fh3) or "?")
                         if key in remapped:
-                            new, why = convert_material(data, fh3, remapped[key][0], shaders, resolve)
+                            new, why = convert_material(data, fh3, remapped[key][0], shaders, resolve,
+                                                         find_texture)
                             if new:
                                 data = new
                                 converted.add(remapped[key][0].lower())

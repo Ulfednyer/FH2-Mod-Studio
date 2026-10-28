@@ -41,6 +41,9 @@ _RENAMES = {
     "CH2NormalTiling": ["NormalTiling"], "CH2NormalHeightScale": ["NormalHeightScale"],
     "DiffuseTextureSwitchBool": ["CH1DiffuseTextureSwitchBool"],
     "ReflectionTintColorColorParam": ["ReflectionTintColorParam"],
+    # dual-surface (metal / non-metal half by mask): FH2's A half = metal, B = non-metal
+    "F0_Metal": ["F0a", "F0aVector4"], "F0_NonMetal": ["F0b", "F0bVector4"],
+    "Gloss_Metal": ["GlossA_floatVal"], "Gloss_NonMetal": ["GlossB_floatVal"],
 }
 for _src, _dst in _RENAMES.items():
     for _h in (h for h, n in lightparams.NAMES.items() if n == _src):
@@ -123,6 +126,26 @@ def _fh3_values(fh3_lib, fh3_names, rel):
     return out
 
 
+_AO_SWITCH = {h: [t for t, m in lightparams.NAMES.items() if m == tex]
+              for sw, tex in (("CH2DirectAOSwitchBool", "AOTexture"), ("CH1LocalAOSwitch0Bool", "LocalAOTexture"))
+              for h, n in lightparams.NAMES.items() if n == sw}
+
+
+def ao_switches_off(b, material):
+    """Instance MTPR data -> new data or None: AO-texture switches turned on (FH3 meaning: AO from the normal map)
+    while neither the instance nor its material sets the AO texture FH2's switch multiplies by (see matconv)."""
+    ps, _ = _params(b)
+    out = bytearray(b)
+    changed = False
+    for start, stop, maj, mn, h, typ in ps:
+        if h in _AO_SWITCH and typ == 3 and struct.unpack_from("<i", b, stop - 4)[0]:
+            texs = [struct.pack("<I", t) for t in _AO_SWITCH[h]]
+            if not any(t in b or (material and t in material) for t in texs):
+                struct.pack_into("<i", out, stop - 4, 0)
+                changed = True
+    return bytes(out) if changed else None
+
+
 def _fix_bundle(data, shader_of_blob, extra=None):
     """Bundle bytes -> new bytes or None; shader_of_blob(blob list) gives the shader for its MTPR blobs."""
     blobs = bundle.parse(data)
@@ -184,6 +207,10 @@ def fix_zip(src, dst, car_name, materials_zip, shaders_zip, fh3_materials_zip):
                         for ib in inner:
                             if ib.tag == b"RPTM":
                                 nb = expand_blob(ib.data, shader)
+                                if nb is not None:
+                                    ib.data = nb
+                                    hit = True
+                                nb = ao_switches_off(ib.data, md)
                                 if nb is not None:
                                     ib.data = nb
                                     hit = True

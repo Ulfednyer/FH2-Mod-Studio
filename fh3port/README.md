@@ -670,3 +670,18 @@ Paths inside the scripts point at the session scratchpad; adjust before reuse.
 - **Make logos stretched** (BAC, Alumi Craft): FH2's UI draws a logo over a fixed box - all FH2 logos are 440x376 (L_) or
   220x184. FH3's large logos have their own shape (BAC 400x72). `logos.fit` pads them with transparent BC7 blocks to
   FH2's aspect ratio (no re-encoding); every port run repairs installed ones, `fh3port.py fix-logos` does it alone.
+- **In-game check after the full re-port** (Centenario, Zenvo, Zonda logos fine) and the fixes it led to:
+  - *Missing rims* (Hoonicorn): FH3 shaders the converter can't place and doesn't report get an empty shader path
+    (`Game:\Media\.shaderbin`) - FH2 draws nothing. matconv now converts every material whose shader FH2 doesn't have
+    (`ch1_normalpha_color` -> ch1 family, `car_cf_composite_interior` -> `car_cf_interior`). Only the Hoonicorn rim and the
+    DB11 carbon had this among ported cars (FH2's own cars ship a few such unused materials).
+  - *Dark / black interiors* (RWB 911 seats, Focus RS RX): FH3's `CH2DirectAOSwitchBool` / `CH1LocalAOSwitch0Bool` take
+    occlusion from the normal map; FH2's multiply by `AOTexture` / `LocalAOTexture`, default `defaultshader_glos` (dark).
+    Converted materials and instances get the switch off when no such texture is set.
+  - *Black engine* (Hoonicorn): dual-surface materials (`int_ch1_dualsurface_diffuse`, `_alloptions`) carry a metal and a
+    non-metal half; FH2's ch1 shaders have the same halves: `F0_Metal`/`Gloss_Metal` -> `F0a`/`GlossA`,
+    `_NonMetal` -> `B` (materials and instances). Metal decision falls back to the file name when FH3 sets no reflectance.
+  - *Closed grilles* (Bentayga): FH3's `ext_grille`/`int_grille` cut the holes from the pattern (`FillSwitchBool` 0); FH2
+    grilles use the pattern's `_opac` texture as `AlphaTexture` + `CH1OpacityMaskSwitchBool` + alpha test (`TSTA` 1).
+  - Restored textures must exist: FH3 references some library textures it ships nowhere (`decorative_00x_opac`,
+    `stitch_015` ...) - those keep the converter's stand-in.

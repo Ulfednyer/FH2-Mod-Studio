@@ -470,7 +470,8 @@ def convert_zip(src_zip, car_name, out_zip, keep_plates=False, new_car_id=None):
         # (white/grey interiors otherwise); also undoes the converter's swaps of textures FH2 lacks
         log, converted = matconv.fix_zip(out_zip, tmp, src_zip, os.path.join(converter_fh3_lib(), "Materials.zip"), FH2_SHADERS,
                                          [os.path.join(FH2_LIB, "Materials.zip"),
-                                          os.path.join(os.path.dirname(FH2_SHADERS), "Materials.zip")], remaps)
+                                          os.path.join(os.path.dirname(FH2_SHADERS), "Materials.zip")], remaps,
+                                         library_texture_available, library_texture_named)
         os.replace(tmp, out_zip)
         out += "\nmatconv:\n   " + "\n   ".join(log)
         remaps = [r for r in remaps if r[0].lower() not in converted]
@@ -719,6 +720,36 @@ LIB_TEX_PREFIX = "game:\\media\\cars\\_library\\textures\\"
 _fh2_lib_textures = None
 
 
+def fh2_library_textures():
+    """Names (lower case, '/') in FH2's cars\\_library\\Textures*.zip."""
+    global _fh2_lib_textures
+    if _fh2_lib_textures is None:
+        _fh2_lib_textures = set()
+        for p in glob.glob(os.path.join(FH2_LIB, "Textures*.zip")):
+            with zipfile.ZipFile(p) as z:
+                _fh2_lib_textures.update(n.lower() for n in z.namelist())
+    return _fh2_lib_textures
+
+
+def library_texture_named(stem):
+    """Game path of an FH2 cars/_library texture whose file name starts with stem (grille pattern _opac ...), or None."""
+    hits = sorted((n for n in fh2_library_textures() if n.rsplit("/", 1)[-1].startswith(stem)),
+                  key=lambda n: (n.startswith("donotuse/"), n))
+    return LIB_TEX_PREFIX + hits[0].replace("/", "\\") if hits else None
+
+
+def library_texture_available(game_path):
+    """A cars\\_library texture FH2 has or the porter can copy from FH3 (some FH3 references exist in no zip)."""
+    low = game_path.lower().replace("/", "\\")
+    if not low.startswith(LIB_TEX_PREFIX):
+        return True
+    fh2_library_textures()
+    if low[len(LIB_TEX_PREFIX):].replace("\\", "/") in _fh2_lib_textures:
+        return True
+    fh3_library_file("game:\\media\\x")                 # builds the FH3 index
+    return low.replace("game:\\media\\", "") in _fh3_lib_index
+
+
 def texture_refs(zip_path):
     """All Texture2D paths (lowercase) set by the materials and material instances in a converted car zip."""
     refs = set()
@@ -753,12 +784,7 @@ def missing_library_textures(zip_path):
     """Shared-library textures a car references that FH2's cars\\_library\\Textures*.zip doesn't have. The converter
     only reports the ones referenced from the carbin; material/instance references (grille patterns, light masks,
     screws, grain normals...) were silently left dangling and render black/flat."""
-    global _fh2_lib_textures
-    if _fh2_lib_textures is None:
-        _fh2_lib_textures = set()
-        for p in glob.glob(os.path.join(FH2_LIB, "Textures*.zip")):
-            with zipfile.ZipFile(p) as z:
-                _fh2_lib_textures.update(n.lower() for n in z.namelist())
+    fh2_library_textures()
     return sorted(r for r in texture_refs(zip_path)
                   if r.startswith(LIB_TEX_PREFIX) and r[len(LIB_TEX_PREFIX):].replace("\\", "/") not in _fh2_lib_textures)
 
