@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -20,6 +20,7 @@ public partial class AddUpgradeWindow : Window
         new(UpgradeKind.TireCompound, "Tyre compound", "Fill an empty tyre slot: street, sport, race, slick or rally"),
         new(UpgradeKind.TireWidth, "Wider tyres", "Add a wider front and/or rear tyre option"),
         new(UpgradeKind.Spacers, "Wheel spacers", "Wider track: always fitted, or sold in the shop"),
+        new(UpgradeKind.BodyPart, "Body & aero parts / removal", "Remove hood, front/rear bumper, rear wing, side skirts, or unlock aero tuning"),
         new(UpgradeKind.ExtraLevel, "Missing level of a part", "Fill an empty shop slot, e.g. street springs or a sport anti-roll bar"),
     };
 
@@ -187,6 +188,17 @@ public partial class AddUpgradeWindow : Window
                             ?? Upgrades.AspirationParts.FirstOrDefault(p => !have.Contains(p.Table)).Table
                             ?? Upgrades.AspirationParts[0].Table;
                 _partCombo.SelectedItem = _partCombo.Items.Cast<ComboBoxItem>().First(i => (string)i.Tag == first);
+
+                var aspModes = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 6) };
+                _modeFixed = new RadioButton { Content = "Direct upgrade", Style = (Style)FindResource("SegmentBtn"), GroupName = "aspMode" };
+                _modeShop = new RadioButton { Content = "Shop conversion", Style = (Style)FindResource("SegmentBtn"), GroupName = "aspMode" };
+                var modeBoth = new RadioButton { Content = "Both", Style = (Style)FindResource("SegmentBtn"), GroupName = "aspMode", IsChecked = true };
+                aspModes.Children.Add(_modeFixed);
+                aspModes.Children.Add(_modeShop);
+                aspModes.Children.Add(modeBoth);
+                OptionsPanel.Children.Add(new TextBlock { Text = "Aspiration installation mode", Style = (Style)FindResource("CaptionTxt") });
+                OptionsPanel.Children.Add(new Border { Background = new SolidColorBrush(Color.FromArgb(0x14, 0, 0, 0)), CornerRadius = new CornerRadius(10), Padding = new Thickness(2), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 8), Child = aspModes });
+
                 DonorList("Copy the values from");
                 _partCombo.SelectionChanged += async (_, _) => { var p = SelectedPart()!; await SafeLoad(() => Upgrades.AspirationDonors(_db, _ids, p)); };
                 var part = SelectedPart()!;
@@ -288,6 +300,29 @@ public partial class AddUpgradeWindow : Window
                 ModeChanged();
                 break;
 
+            case UpgradeKind.BodyPart:
+                OptionsPanel.Children.Add(Heading("Body & aero parts / removal"));
+                OptionsPanel.Children.Add(Body("Adds a body part removal upgrade (Level 4, RequiresGraphics = 0) to hide that 3D part mesh in game, or unlocks aero downforce tuning on stock/locked parts."));
+                _driveCombo = Combo("Upgrade option", new[]
+                {
+                    ("hood", "Remove Hood (Level 4 - exposed engine bay)"),
+                    ("front_bumper", "Remove Front Bumper (Level 4)"),
+                    ("rear_bumper", "Remove Rear Bumper (Level 4)"),
+                    ("rear_wing", "Remove Rear Wing (Level 4)"),
+                    ("side_skirts", "Remove Side Skirts (Level 4)"),
+                    ("unlock_aero", "Unlock Aero Downforce Tuning (all wing & bumper levels)"),
+                });
+                _price = Field("Price in shop", "100", "CR");
+                _mass = Field("Weight change", "-2", "kg");
+                _driveCombo.SelectionChanged += (_, _) =>
+                {
+                    var opt = SelectedDrive();
+                    if (_price != null) _price.Text = opt == "unlock_aero" ? "0" : "100";
+                    if (_mass != null) _mass.Text = opt == "hood" ? "-3" : opt == "unlock_aero" ? "0" : "-2";
+                    UpdatePreview();
+                };
+                break;
+
             case UpgradeKind.ExtraLevel:
                 OptionsPanel.Children.Add(Heading("Missing level of a part"));
                 OptionsPanel.Children.Add(Body("The upgrade shop has a fixed number of levels per part (for springs: stock, street, sport, race, rally) and only shows those. " +
@@ -358,6 +393,8 @@ public partial class AddUpgradeWindow : Window
                     if (!Num(b, out var mm) || mm < -30 || mm > 80) return "Spacers must be between -30 and 80 mm per side.";
                 if (_modeShop?.IsChecked == true && !Num(_price, out _)) return "Enter a price.";
                 return null;
+            case UpgradeKind.BodyPart:
+                return !Num(_price, out _) || !Num(_mass, out _) ? "Price and weight change must be numbers." : null;
             case UpgradeKind.ExtraLevel:
                 return SelectedPart() == null ? "Every part of this car already uses all of its shop levels - there is no free level to add." : null;
         }
@@ -381,6 +418,9 @@ public partial class AddUpgradeWindow : Window
             UpgradeKind.Spacers => _modeShop?.IsChecked == true
                 ? $"Sells front {_front!.Text} mm / rear {_rear!.Text} mm spacers in the shop for {_price!.Text} CR. Front bumper is hidden while fitted."
                 : $"Always fits front {_front!.Text} mm / rear {_rear!.Text} mm spacers per side from the next car load.",
+            UpgradeKind.BodyPart => SelectedDrive() == "unlock_aero"
+                ? "Unlocks aero downforce tuning on this car's wings and bumpers, making front and rear downforce fully adjustable in the tuning menu."
+                : $"Adds {((ComboBoxItem)_driveCombo!.SelectedItem).Content.ToString()!.Split(" (")[0]} for {_price!.Text} CR ({_mass!.Text} kg weight change).",
             UpgradeKind.ExtraLevel => $"Adds {((ComboBoxItem)_partCombo!.SelectedItem).Content!.ToString()!.Split("   ·")[0]} to the upgrade shop, starting as a copy of the nearest level.",
             _ => "",
         };
@@ -406,7 +446,7 @@ public partial class AddUpgradeWindow : Window
         {
             (ResultSql, ResultDescription, ResultWhere) = await Task.Run(() => _kind switch
             {
-                UpgradeKind.Aspiration => (Upgrades.BuildAspiration(_db, _ids, part, d!.Key), $"Added {partLabel.ToLowerInvariant()}", "Engine ▸ Engine parts & upgrades"),
+                UpgradeKind.Aspiration => (Upgrades.BuildAspiration(_db, _ids, part, d!.Key, _modeFixed?.IsChecked == true ? "direct" : _modeShop?.IsChecked == true ? "conversion" : "both"), $"Added {partLabel.ToLowerInvariant()}", "Engine ▸ Engine parts & upgrades"),
                 UpgradeKind.EngineSwap => (Upgrades.BuildEngineSwap(_db, _ids, d!.Key, price, mass), $"Added engine swap: {d.Title}", "Engine ▸ Engine swaps"),
                 UpgradeKind.DrivetrainSwap => (Upgrades.BuildDrivetrainSwap(_db, _ids, d!.Key, drive, price, mass), $"Added drivetrain conversion: {d.Title}", "Drivetrain ▸ Drivetrain conversions"),
                 UpgradeKind.TireCompound => (Upgrades.BuildTireCompound(_db, _ids, d!.Key, price), $"Added {d.Title.ToLowerInvariant()}","Tyres & grip ▸ Tyre compound & rim upgrades"),
@@ -414,6 +454,9 @@ public partial class AddUpgradeWindow : Window
                 UpgradeKind.Spacers => shopMode
                     ? (Upgrades.BuildShopSpacers(_db, _stock, _ids, front, rear, price), "Added shop wheel spacers", "Tyres & grip ▸ Wheel spacers - shop upgrade")
                     : (Upgrades.BuildFixedSpacers(_stock, _ids, front, rear), "Set always-fitted wheel spacers", "Tyres & grip ▸ Wheel spacers - always fitted"),
+                UpgradeKind.BodyPart => drive == "unlock_aero"
+                    ? (Upgrades.UnlockAeroTuningForCar(_db, _ids), "Unlocked aero tuning", "Aerodynamics ▸ Wing & bumper downforce (List_AeroPhysics)")
+                    : (Upgrades.BuildBodyPartRemoval(_db, _ids, drive, price, mass), $"Added {drive.Replace('_', ' ')} removal", "Aerodynamics ▸ Wing & bumper upgrades"),
                 _ => (Upgrades.BuildExtraLevel(_db, _ids, part, level), $"Added {partLabel}", "the section that holds this part"),
             });
             DialogResult = true;

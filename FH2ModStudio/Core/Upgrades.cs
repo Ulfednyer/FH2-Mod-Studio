@@ -3,7 +3,7 @@ using System.Text;
 
 namespace FH2ModStudio.Core;
 
-public enum UpgradeKind { Aspiration, EngineSwap, DrivetrainSwap, TireCompound, TireWidth, Spacers, ExtraLevel }
+public enum UpgradeKind { Aspiration, EngineSwap, DrivetrainSwap, TireCompound, TireWidth, Spacers, ExtraLevel, BodyPart }
 
 public sealed record Donor(string Key, string Title, string Detail, double Score, bool Recommended);
 
@@ -56,9 +56,9 @@ public static class Upgrades
         ["List_UpgradeEngineCamshaft"] = (0, 3), ["List_UpgradeEngineValves"] = (0, 3), ["List_UpgradeEngineDisplacement"] = (0, 3),
         ["List_UpgradeEnginePistonsCompression"] = (0, 3), ["List_UpgradeEngineFuelSystem"] = (0, 3), ["List_UpgradeEngineIgnition"] = (0, 3),
         ["List_UpgradeEngineExhaust"] = (0, 3), ["List_UpgradeEngineIntake"] = (0, 3), ["List_UpgradeEngineFlywheel"] = (0, 3),
-        ["List_UpgradeEngineOilCooling"] = (0, 3), ["List_UpgradeEngineRestrictorPlate"] = (0, 2),
+        ["List_UpgradeEngineOilCooling"] = (0, 3), ["List_UpgradeEngineRestrictorPlate"] = (0, 3),
         ["List_UpgradeEngineManifold"] = (1, 3), ["List_UpgradeEngineIntercooler"] = (1, 3),
-        ["List_UpgradeEngineTurboSingle"] = (1, 3), ["List_UpgradeEngineTurboTwin"] = (1, 3), ["List_UpgradeEngineTurboQuad"] = (1, 3),
+        ["List_UpgradeEngineTurboSingle"] = (1, 3), ["List_UpgradeEngineTurboTwin"] = (1, 3), ["List_UpgradeEngineTurboQuad"] = (0, 3),
         ["List_UpgradeEngineCSC"] = (1, 3), ["List_UpgradeEngineDSC"] = (1, 3),
         ["List_UpgradeDrivetrainClutch"] = (0, 3), ["List_UpgradeDrivetrainDifferential"] = (0, 3), ["List_UpgradeDrivetrainDriveline"] = (0, 3),
         ["List_UpgradeDrivetrainTransmission"] = (0, 4),
@@ -67,6 +67,7 @@ public static class Upgrades
         ["List_UpgradeSpringDamper"] = (0, 4), ["List_UpgradeAntiSwayFront"] = (0, 3), ["List_UpgradeAntiSwayRear"] = (0, 3),
         ["List_UpgradeBrakes"] = (0, 3), ["List_UpgradeTireCompound"] = (0, 5),
         ["List_UpgradeRearWing"] = (0, 4), ["List_UpgradeCarBodyFrontBumper"] = (0, 4),
+        ["List_UpgradeCarBodyRearBumper"] = (0, 4), ["List_UpgradeCarBodySideSkirt"] = (0, 4), ["List_UpgradeCarBodyHood"] = (0, 4),
     };
 
     public static (int Min, int Max)? SlotRange(string table) => Slots.TryGetValue(table, out var s) ? s : null;
@@ -116,7 +117,9 @@ public static class Upgrades
                 used.Add(lvl);
             }
             values["Id"] = NextId(db, table, idBase, taken).ToString(CultureInfo.InvariantCulture);
-            sb.AppendLine(CarModel.InsertSql(table, source.Columns, source.Columns.Select(c => values[c])));
+            var targetCols = db.Query($"PRAGMA table_info({Q(table)});", out _)?.Rows.Select(r => r[1]!).ToList() ?? source.Columns;
+            var cols = targetCols.Where(c => values.ContainsKey(c)).ToList();
+            sb.AppendLine(CarModel.InsertSql(table, cols, cols.Select(c => values[c])));
         }
         if (sb.Length == 0)
             throw new InvalidOperationException("Every shop slot this part would use is already taken on this car - nothing to add. Change the existing levels in the car's sections instead.");
@@ -130,26 +133,65 @@ public static class Upgrades
         var mine = db.Query($"SELECT CylinderID, EngineGraphingMaxPower FROM Data_Engine WHERE EngineID = {ids.EngineId};", out _);
         string? cyl = mine?.Rows.FirstOrDefault()?[0];
         double power = Num(mine?.Rows.FirstOrDefault()?[1]);
+        string queryTable = table;
+        bool isQuadTurbo = table == "List_UpgradeEngineTurboQuad";
+        // List_UpgradeEngineTurboQuad has 0 rows in stock game; fallback to twin turbo donors
+        if (isQuadTurbo && Scalar(db, "SELECT COUNT(*) FROM List_UpgradeEngineTurboQuad;") == 0)
+            queryTable = "List_UpgradeEngineTurboTwin";
+
         var r = db.Query($"SELECT t.EngineID, MIN(c.MediaName), COUNT(*), e.CylinderID, e.EngineGraphingMaxPower, MAX(t.MaxScale) " +
-                         $"FROM {Q(table)} t JOIN Data_Engine e ON e.EngineID = t.EngineID " +
+                         $"FROM {Q(queryTable)} t JOIN Data_Engine e ON e.EngineID = t.EngineID " +
                          $"JOIN List_UpgradeEngine u ON u.EngineID = t.EngineID JOIN Data_Car c ON c.Id = u.Ordinal " +
                          $"WHERE t.EngineID <> {ids.EngineId} GROUP BY t.EngineID;", out _);
         if (r == null) return new();
         var list = r.Rows.Select(row =>
         {
             double p = Num(row[4]);
-            double score = (row[3] == cyl ? 0 : 1000) + Math.Abs(p - power);
-            return new Donor(row[0]!, row[1] + " engine", $"{row[2]} level(s) · max boost ×{F(Num(row[5]))} · {Math.Round(p * 1.341)} hp stock", score, false);
+            long eid = (long)Num(row[0]);
+            bool oemQuad = isQuadTurbo && (eid == 788 || eid == 678); // Veyron SS or EB110 SS
+            double score = oemQuad ? 0 : (row[3] == cyl ? 0 : 1000) + Math.Abs(p - power) + (isQuadTurbo ? 50 : 0);
+            string title = row[1] + (oemQuad ? " [Quad Turbo OEM]" : " engine");
+            return new Donor(row[0]!, title, $"{row[2]} level(s) · max boost ×{F(Num(row[5]))} · {Math.Round(p * 1.341)} hp stock", score, oemQuad);
         }).OrderBy(d => d.Score).ToList();
-        if (list.Count > 0) list[0] = list[0] with { Recommended = true };
+        if (list.Count > 0 && !list.Any(d => d.Recommended)) list[0] = list[0] with { Recommended = true };
         return list;
     }
 
-    public static string BuildAspiration(ICarDb db, CarIds ids, string table, string donorEngine)
+    public static string BuildAspiration(ICarDb db, CarIds ids, string table, string donorEngine, string mode = "both")
     {
-        var src = db.Query($"SELECT * FROM {Q(table)} WHERE EngineID = {donorEngine} ORDER BY Level;", out var err)
+        var sb = new StringBuilder();
+        string donorTable = table;
+        bool isQuadTurbo = table == "List_UpgradeEngineTurboQuad";
+        if (isQuadTurbo)
+        {
+            sb.Append(EnsureQuadTurboCatalog(db));
+            if (Scalar(db, $"SELECT COUNT(*) FROM List_UpgradeEngineTurboQuad WHERE EngineID = {donorEngine};") == 0)
+                donorTable = "List_UpgradeEngineTurboTwin";
+        }
+
+        var src = db.Query($"SELECT * FROM {Q(donorTable)} WHERE EngineID = {donorEngine} ORDER BY Level;", out var err)
                   ?? throw new InvalidOperationException(err);
-        return CloneRows(db, table, "EngineID", ids.EngineId!.Value, ids.EngineId.Value * 1000, src);
+        if (src.Rows.Count == 0)
+            throw new InvalidOperationException($"No donor parts found in {donorTable} for engine {donorEngine}.");
+
+        sb.Append(CloneRows(db, table, "EngineID", ids.EngineId!.Value, ids.EngineId.Value * 1000, src));
+
+        // When mode is "direct" or "both", set the engine stock aspiration and car aspiration type to Quad Turbo (4)
+        if (isQuadTurbo && (mode == "direct" || mode == "both"))
+        {
+            sb.AppendLine($"UPDATE Data_Engine SET AspirationID_Stock = 4 WHERE EngineID = {ids.EngineId};");
+            sb.AppendLine($"UPDATE Data_Car SET AspirationTypeId = 4 WHERE Id = {ids.CarId};");
+        }
+
+        // Ensure List_UpgradeEngineIntercooler rows exist for this engine (needed if engine was NA)
+        if (Scalar(db, $"SELECT COUNT(*) FROM List_UpgradeEngineIntercooler WHERE EngineID = {ids.EngineId};") == 0)
+        {
+            var icSrc = db.Query($"SELECT * FROM List_UpgradeEngineIntercooler WHERE EngineID = {donorEngine} ORDER BY Level;", out _);
+            if (icSrc is { Rows.Count: > 0 })
+                sb.Append(CloneRows(db, "List_UpgradeEngineIntercooler", "EngineID", ids.EngineId!.Value, ids.EngineId.Value * 1000, icSrc));
+        }
+
+        return sb.ToString();
     }
 
     // ───────────── engine swap ─────────────
@@ -445,6 +487,8 @@ public static class Upgrades
         ["List_UpgradeSpringDamper"] = new[] { ("FrontSpringDamperPhysicsID", "List_SpringDamperPhysics", "SpringDamperPhysicsID", 0), ("RearSpringDamperPhysicsID", "List_SpringDamperPhysics", "SpringDamperPhysicsID", 100) },
         ["List_UpgradeAntiSwayFront"] = new[] { ("AntiSwayPhysicsID", "List_AntiSwayPhysics", "AntiSwayPhysicsID", 0) },
         ["List_UpgradeAntiSwayRear"] = new[] { ("AntiSwayPhysicsID", "List_AntiSwayPhysics", "AntiSwayPhysicsID", 100) },
+        ["List_UpgradeRearWing"] = new[] { ("AeroPhysicsID", "List_AeroPhysics", "AeroPhysicsID", 850) },
+        ["List_UpgradeCarBodyFrontBumper"] = new[] { ("AeroPhysicsID", "List_AeroPhysics", "AeroPhysicsID", 800) },
     };
 
     /// <summary>Fills a free shop slot of a part with a copy of the car's nearest level (and its own copy of that level's physics).</summary>
@@ -479,9 +523,207 @@ public static class Upgrades
         {
             v["Level"] = level.ToString(CultureInfo.InvariantCulture);
             if (priceIdx >= 0) v["Price"] = F(Math.Max(500, Math.Round(Num(v["Price"]) * (level > srcLevel ? 1.5 : 0.6) / 50) * 50));
+            if (level == 4 && (table.StartsWith("List_UpgradeCarBody", StringComparison.Ordinal) || table == "List_UpgradeRearWing"))
+            {
+                v["RequiresGraphics"] = "0";
+                v["IsStock"] = "0";
+                if (v.ContainsKey("MassDiff")) v["MassDiff"] = "-2.0";
+                v["Price"] = "100";
+            }
             foreach (var (c, id) in physicsIds) v[c] = id;
             return v;
         }));
+        return sb.ToString();
+    }
+
+    // ───────────── body part removal & quad turbo catalog ─────────────
+
+    public static string EnsureQuadTurboCatalog(ICarDb db)
+    {
+        var sb = new StringBuilder();
+        if (Scalar(db, "SELECT COUNT(*) FROM UpgradeTypes WHERE PartEnum = 26;") == 0)
+        {
+            sb.AppendLine("INSERT INTO UpgradeTypes (id, PartEnum, AreaId, IsException, DisplayOrder, EverymanUpgradeDisplayOrder, Name, Description, IconPath, ImagePath) " +
+                          "VALUES (52, 26, 1, 0, 10, -1, '_&4038040853', '_&4038034807', " +
+                          "'GAME:\\Media\\UI\\Textures\\Data_Bound\\Upgrade_Parts\\Engine_Power\\turbo_twin_Icon.swatchbin', " +
+                          "'GAME:\\Media\\UI\\Textures\\Data_Bound\\Upgrade_Parts\\Engine_Power\\turbo_twin_LG_Icon.swatchbin');");
+        }
+        if (Scalar(db, "SELECT COUNT(*) FROM Upgrades WHERE TypeId = '52' AND Level = 0;") == 0)
+        {
+            sb.AppendLine("INSERT INTO Upgrades (id, TypeId, IsException, Name, Level, Description, IconPath, ImagePath) VALUES " +
+                          "(280, '52', 0, '_&1888595974', 0, '_&1888559138', 'GAME:\\Media\\UI\\Textures\\Data_Bound\\Upgrade_Parts\\stock_Icon.swatchbin', 'GAME:\\Media\\UI\\Textures\\Data_Bound\\Upgrade_Parts\\stock_LG_Icon.swatchbin');");
+        }
+        if (Scalar(db, "SELECT COUNT(*) FROM Upgrades WHERE TypeId = '52' AND Level = 1;") == 0)
+        {
+            sb.AppendLine("INSERT INTO Upgrades (id, TypeId, IsException, Name, Level, Description, IconPath, ImagePath) VALUES " +
+                          "(281, '52', 0, '_&1888595975', 1, '_&1888559266', 'GAME:\\Media\\UI\\Textures\\Data_Bound\\Upgrade_Parts\\Engine_Power\\turbo_twin_1.swatchbin', 'GAME:\\Media\\UI\\Textures\\Data_Bound\\Upgrade_Parts\\Engine_Power\\turbo_twin_LG_1.swatchbin');");
+        }
+        if (Scalar(db, "SELECT COUNT(*) FROM Upgrades WHERE TypeId = '52' AND Level = 2;") == 0)
+        {
+            sb.AppendLine("INSERT INTO Upgrades (id, TypeId, IsException, Name, Level, Description, IconPath, ImagePath) VALUES " +
+                          "(282, '52', 0, '_&1888595976', 2, '_&1888560930', 'GAME:\\Media\\UI\\Textures\\Data_Bound\\Upgrade_Parts\\Engine_Power\\turbo_twin_2.swatchbin', 'GAME:\\Media\\UI\\Textures\\Data_Bound\\Upgrade_Parts\\Engine_Power\\turbo_twin_LG_2.swatchbin');");
+        }
+        if (Scalar(db, "SELECT COUNT(*) FROM Upgrades WHERE TypeId = '52' AND Level = 3;") == 0)
+        {
+            sb.AppendLine("INSERT INTO Upgrades (id, TypeId, IsException, Name, Level, Description, IconPath, ImagePath) VALUES " +
+                          "(283, '52', 0, '_&1888595977', 3, '_&1888561058', 'GAME:\\Media\\UI\\Textures\\Data_Bound\\Upgrade_Parts\\Engine_Power\\turbo_twin_3.swatchbin', 'GAME:\\Media\\UI\\Textures\\Data_Bound\\Upgrade_Parts\\Engine_Power\\turbo_twin_LG_3.swatchbin');");
+        }
+        return sb.ToString();
+    }
+
+    public static string EnsureHoodRemovalCatalog(ICarDb db)
+    {
+        var sb = new StringBuilder();
+        if (Scalar(db, "SELECT COUNT(*) FROM Upgrades WHERE TypeId = '28' AND Level = 4;") == 0)
+        {
+            sb.AppendLine("INSERT INTO Upgrades (id, TypeId, IsException, Name, Level, Description, IconPath, ImagePath) VALUES " +
+                          "(278, '28', 0, '_&1888595972', 4, '_&1888595973', 'GAME:\\Media\\UI\\Textures\\Data_Bound\\Upgrade_Parts\\Aero_Appearance\\hood_Icon.swatchbin', 'GAME:\\Media\\UI\\Textures\\Data_Bound\\Upgrade_Parts\\Aero_Appearance\\hood_LG_Icon.swatchbin');");
+        }
+        return sb.ToString();
+    }
+
+    public static string BuildBodyPartRemoval(ICarDb db, CarIds ids, string partKey, double price = 100, double massDiff = -2.0)
+    {
+        var sb = new StringBuilder();
+        switch (partKey.ToLowerInvariant())
+        {
+            case "hood":
+                sb.Append(EnsureHoodRemovalCatalog(db));
+                if (ids.BodyId is { } bodyId)
+                {
+                    if (Scalar(db, $"SELECT COUNT(*) FROM List_UpgradeCarBodyHood WHERE CarBodyId = {bodyId} AND Level = 4;") > 0)
+                        throw new InvalidOperationException("Hood removal upgrade already exists on this car.");
+                    long id = NextId(db, "List_UpgradeCarBodyHood", bodyId, new HashSet<long>());
+                    sb.AppendLine(CarModel.InsertSql("List_UpgradeCarBodyHood",
+                        new[] { "Id", "CarBodyID", "Level", "IsStock", "Sequence", "ManufacturerId", "PartsStringId", "MassDiff", "WeightDistDiff", "DragScale", "WindInstabilityScale", "Price", "RequiresGraphics" },
+                        new[] { id.ToString(CultureInfo.InvariantCulture), bodyId.ToString(CultureInfo.InvariantCulture), "4", "0", "2", "0", "108", F(massDiff), "-0.001", "1.0", "1.0", ((int)price).ToString(CultureInfo.InvariantCulture), "0" }));
+                }
+                break;
+            case "front_bumper":
+                if (ids.BodyId is { } fbBodyId)
+                {
+                    if (Scalar(db, $"SELECT COUNT(*) FROM List_UpgradeCarBodyFrontBumper WHERE CarBodyId = fbBodyId AND Level = 4;") > 0)
+                        throw new InvalidOperationException("Front bumper removal upgrade already exists on this car.");
+                    long id = NextId(db, "List_UpgradeCarBodyFrontBumper", fbBodyId, new HashSet<long>());
+                    sb.AppendLine(CarModel.InsertSql("List_UpgradeCarBodyFrontBumper",
+                        new[] { "Id", "CarBodyID", "Level", "IsStock", "Sequence", "ManufacturerId", "PartsStringId", "MassDiff", "DragScale", "WindInstabilityScale", "Price", "AeroPhysicsID", "RequiresGraphics" },
+                        new[] { id.ToString(CultureInfo.InvariantCulture), fbBodyId.ToString(CultureInfo.InvariantCulture), "4", "0", "2", "255", "26", F(massDiff), "1.0", "1.0", ((int)price).ToString(CultureInfo.InvariantCulture), "20", "0" }));
+                }
+                break;
+            case "rear_bumper":
+                if (ids.BodyId is { } rbBodyId)
+                {
+                    if (Scalar(db, $"SELECT COUNT(*) FROM List_UpgradeCarBodyRearBumper WHERE CarBodyId = rbBodyId AND Level = 4;") > 0)
+                        throw new InvalidOperationException("Rear bumper removal upgrade already exists on this car.");
+                    long id = NextId(db, "List_UpgradeCarBodyRearBumper", rbBodyId, new HashSet<long>());
+                    sb.AppendLine(CarModel.InsertSql("List_UpgradeCarBodyRearBumper",
+                        new[] { "Id", "CarBodyID", "Level", "IsStock", "Sequence", "ManufacturerId", "PartsStringId", "MassDiff", "DragScale", "WindInstabilityScale", "Price", "BodyAeroForwardDownforceFront", "BodyAeroForwardDownforceRear", "RequiresGraphics" },
+                        new[] { id.ToString(CultureInfo.InvariantCulture), rbBodyId.ToString(CultureInfo.InvariantCulture), "4", "0", "2", "255", "53", F(massDiff), "1.0", "1.0", ((int)price).ToString(CultureInfo.InvariantCulture), "0.0", "0.0", "0" }));
+                }
+                break;
+            case "rear_wing":
+                if (Scalar(db, $"SELECT COUNT(*) FROM List_UpgradeRearWing WHERE Ordinal = {ids.CarId} AND Level = 4;") > 0)
+                    throw new InvalidOperationException("Rear wing removal upgrade already exists on this car.");
+                long rwId = NextId(db, "List_UpgradeRearWing", ids.CarId * 1000, new HashSet<long>());
+                sb.AppendLine(CarModel.InsertSql("List_UpgradeRearWing",
+                    new[] { "Id", "Ordinal", "Level", "IsStock", "Sequence", "ManufacturerId", "PartsStringId", "MassDiff", "DragScale", "WindInstabilityScale", "Price", "AeroPhysicsID", "RequiresGraphics" },
+                    new[] { rwId.ToString(CultureInfo.InvariantCulture), ids.CarId.ToString(CultureInfo.InvariantCulture), "4", "0", "2", "255", "80", F(massDiff), "0.97", "1.0", ((int)price).ToString(CultureInfo.InvariantCulture), "19", "0" }));
+                break;
+            case "side_skirts":
+                if (ids.BodyId is { } ssBodyId)
+                {
+                    if (Scalar(db, $"SELECT COUNT(*) FROM List_UpgradeCarBodySideSkirt WHERE CarBodyId = ssBodyId AND Level = 4;") > 0)
+                        throw new InvalidOperationException("Side skirts removal upgrade already exists on this car.");
+                    long id = NextId(db, "List_UpgradeCarBodySideSkirt", ssBodyId, new HashSet<long>());
+                    sb.AppendLine(CarModel.InsertSql("List_UpgradeCarBodySideSkirt",
+                        new[] { "Id", "CarBodyID", "Level", "IsStock", "Sequence", "ManufacturerId", "PartsStringId", "MassDiff", "DragScale", "WindInstabilityScale", "Price", "RequiresGraphics" },
+                        new[] { id.ToString(CultureInfo.InvariantCulture), ssBodyId.ToString(CultureInfo.InvariantCulture), "4", "0", "2", "255", "82", F(massDiff), "1.0", "1.0", ((int)price).ToString(CultureInfo.InvariantCulture), "0" }));
+                }
+                break;
+        }
+        return sb.ToString();
+    }
+
+    public static string UnlockAeroTuningForCar(ICarDb db, CarIds ids)
+    {
+        var sb = new StringBuilder();
+        var wingRows = db.Query($"SELECT Id, Level, AeroPhysicsID FROM List_UpgradeRearWing WHERE Ordinal = {ids.CarId};", out _)?.Rows ?? new();
+        var frontRows = ids.BodyId is { } b
+            ? db.Query($"SELECT Id, Level, AeroPhysicsID FROM List_UpgradeCarBodyFrontBumper WHERE CarBodyId = {b};", out _)?.Rows ?? new()
+            : new();
+
+        var taken = new HashSet<long>();
+        void ProcessPart(string table, List<List<string?>> rows, bool isWing)
+        {
+            foreach (var r in rows)
+            {
+                if (r[0] == null || r[2] == null) continue;
+                string rowId = r[0]!;
+                int level = (int)Num(r[1]);
+                string oldPhysId = r[2]!;
+                var phys = db.Query($"SELECT * FROM List_AeroPhysics WHERE AeroPhysicsID = {oldPhysId};", out _);
+                if (phys == null || phys.Rows.Count == 0) continue;
+                var physRow = phys.Rows[0];
+                int df0Idx = phys.Columns.IndexOf("Downforce0"), df1Idx = phys.Columns.IndexOf("Downforce1");
+                double df0 = df0Idx >= 0 ? Num(physRow[df0Idx]) : 0;
+                double df1 = df1Idx >= 0 ? Num(physRow[df1Idx]) : 0;
+
+                long baseId = ids.CarId * 1000 + (isWing ? 850 : 800) + Math.Clamp(level, 0, 99);
+                long newPhysId = baseId;
+                while (taken.Contains(newPhysId) || Scalar(db, $"SELECT COUNT(*) FROM List_AeroPhysics WHERE AeroPhysicsID = {newPhysId};") > 0)
+                    newPhysId++;
+                taken.Add(newPhysId);
+
+                var values = physRow.ToArray();
+                values[phys.Columns.IndexOf("AeroPhysicsID")] = newPhysId.ToString(CultureInfo.InvariantCulture);
+                if (isWing)
+                {
+                    double d = df0 > 0 ? df0 : 34.02;
+                    double min = Math.Round(d * 0.7, 2);
+                    double max = Math.Round(Math.Max(d * 1.5, d + 25.0), 2);
+                    if (df0Idx >= 0) values[df0Idx] = min.ToString("0.####", CultureInfo.InvariantCulture);
+                    if (df1Idx >= 0) values[df1Idx] = max.ToString("0.####", CultureInfo.InvariantCulture);
+                    int dr0 = phys.Columns.IndexOf("Drag0"), dr1 = phys.Columns.IndexOf("Drag1");
+                    if (dr0 >= 0 && Num(values[dr0]) == 0) values[dr0] = "20.0";
+                    if (dr1 >= 0 && Num(values[dr1]) <= Num(values[dr0])) values[dr1] = "45.0";
+                }
+                else
+                {
+                    double d = df0 > 0 ? df0 : 22.68;
+                    double min = Math.Round(d * 0.7, 2);
+                    double max = Math.Round(Math.Max(d * 1.5, d + 15.0), 2);
+                    if (df0Idx >= 0) values[df0Idx] = min.ToString("0.####", CultureInfo.InvariantCulture);
+                    if (df1Idx >= 0) values[df1Idx] = max.ToString("0.####", CultureInfo.InvariantCulture);
+                    int dr0 = phys.Columns.IndexOf("Drag0"), dr1 = phys.Columns.IndexOf("Drag1");
+                    if (dr0 >= 0 && Num(values[dr0]) == 0) values[dr0] = "10.0";
+                    if (dr1 >= 0 && Num(values[dr1]) <= Num(values[dr0])) values[dr1] = "20.0";
+                }
+                int defIdx = phys.Columns.IndexOf("DefaultTuneSlider");
+                if (defIdx >= 0) values[defIdx] = "0.5";
+
+                sb.AppendLine(CarModel.InsertSql("List_AeroPhysics", phys.Columns, values));
+                sb.AppendLine($"UPDATE {Q(table)} SET AeroPhysicsID = {newPhysId} WHERE Id = {rowId};");
+            }
+        }
+
+        ProcessPart("List_UpgradeRearWing", wingRows, isWing: true);
+        ProcessPart("List_UpgradeCarBodyFrontBumper", frontRows, isWing: false);
+        return sb.ToString();
+    }
+
+    public static string UnlockAeroTuningForAllCars(ICarDb db)
+    {
+        var sb = new StringBuilder();
+        // Front bumper shared IDs: 1, 2, 3, 20
+        sb.AppendLine("UPDATE List_AeroPhysics SET Downforce0 = 15.0, Downforce1 = 35.0, Drag0 = 5.0, Drag1 = 15.0, DefaultTuneSlider = 0.5 WHERE AeroPhysicsID IN (1, 2);");
+        sb.AppendLine("UPDATE List_AeroPhysics SET Downforce0 = 18.0, Downforce1 = 40.0, Drag0 = 8.0, Drag1 = 18.0, DefaultTuneSlider = 0.5 WHERE AeroPhysicsID = 3;");
+        sb.AppendLine("UPDATE List_AeroPhysics SET Downforce0 = 0.0, Downforce1 = 30.0, Drag0 = 0.0, Drag1 = 15.0, DefaultTuneSlider = 0.5 WHERE AeroPhysicsID = 20;");
+        // Rear wing shared IDs: 5, 6, 7, 19
+        sb.AppendLine("UPDATE List_AeroPhysics SET Downforce0 = 25.0, Downforce1 = 70.0, Drag0 = 15.0, Drag1 = 35.0, DefaultTuneSlider = 0.5 WHERE AeroPhysicsID IN (5, 6);");
+        sb.AppendLine("UPDATE List_AeroPhysics SET Downforce0 = 30.0, Downforce1 = 80.0, Drag0 = 18.0, Drag1 = 40.0, DefaultTuneSlider = 0.5 WHERE AeroPhysicsID = 7;");
+        sb.AppendLine("UPDATE List_AeroPhysics SET Downforce0 = 0.0, Downforce1 = 50.0, Drag0 = 0.0, Drag1 = 25.0, DefaultTuneSlider = 0.5 WHERE AeroPhysicsID = 19;");
+        // Also unlock any car-specific rows where Downforce0 == Downforce1
+        sb.AppendLine("UPDATE List_AeroPhysics SET Downforce1 = CASE WHEN Downforce0 > 0 THEN Downforce0 * 1.5 ELSE 40.0 END, Drag1 = CASE WHEN Drag1 <= Drag0 THEN Drag0 + 15.0 ELSE Drag1 END WHERE Downforce0 = Downforce1 AND AeroPhysicsID NOT IN (1,2,3,4,5,6,7,8,19,20);");
         return sb.ToString();
     }
 }

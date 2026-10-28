@@ -1558,6 +1558,24 @@ UPGRADE_STRINGS = {
                    "Meno grip delle gomme stradali.",
              "BR": "Composto duro de drift que perde tração de forma previsível e mantém derrapagens longas. "
                    "Menos aderência que pneus de rua."},
+    # remove hood (Upgrades row 278, hood level 4)
+    0xD004: {"EN": "Remove Hood", "DE": "Motorhaube entfernen", "FR": "Retirer le capot",
+             "ES": "Quitar capó", "IT": "Rimuovi cofano", "BR": "Remover capô"},
+    0xD005: {"EN": "Remove the car's hood to expose the engine bay. Reduces weight.",
+             "DE": "Entfernt die Motorhaube, um den Motorraum freizulegen. Reduziert das Gewicht.",
+             "FR": "Retirez le capot pour exposer le compartiment moteur. Réduit le poids.",
+             "ES": "Quita el capó para exponer el motor. Reduce peso.",
+             "IT": "Rimuove il cofano per esporre il vano motore. Riduce il peso.",
+             "BR": "Remove o capô para expor o compartimento do motor. Reduz o peso."},
+    # quad turbo upgrades (Upgrades rows 280..283, quad turbo levels 0..3)
+    0xD006: {"EN": "Stock Quad Turbo", "DE": "Serien-Vierfachturbo", "FR": "Quadri-turbo de série",
+             "ES": "Cuádruple turbo de serie", "IT": "Quadri-turbo di serie", "BR": "Quadri-turbo de fábrica"},
+    0xD007: {"EN": "Street Quad Turbo", "DE": "Straßen-Vierfachturbo", "FR": "Quadri-turbo sport",
+             "ES": "Cuádruple turbo urbano", "IT": "Quadri-turbo stradale", "BR": "Quadri-turbo de rua"},
+    0xD008: {"EN": "Sport Quad Turbo", "DE": "Sport-Vierfachturbo", "FR": "Quadri-turbo compétition",
+             "ES": "Cuádruple turbo deportivo", "IT": "Quadri-turbo sportivo", "BR": "Quadri-turbo esporte"},
+    0xD009: {"EN": "Race Quad Turbo", "DE": "Renn-Vierfachturbo", "FR": "Quadri-turbo course",
+             "ES": "Cuádruple turbo de carreras", "IT": "Quadri-turbo da gara", "BR": "Quadri-turbo de corrida"},
 }
 
 

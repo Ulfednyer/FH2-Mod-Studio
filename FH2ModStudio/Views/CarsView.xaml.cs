@@ -217,6 +217,7 @@ public partial class CarsView : UserControl
         UpgradeKind.Aspiration or UpgradeKind.EngineSwap => "engine",
         UpgradeKind.DrivetrainSwap => "drivetrain",
         UpgradeKind.TireCompound or UpgradeKind.TireWidth or UpgradeKind.Spacers => "tires",
+        UpgradeKind.BodyPart => "aero",
         _ => "",
     };
 
@@ -280,6 +281,48 @@ public partial class CarsView : UserControl
         dlg.ShowDialog();
         if (!_status.DatabaseReady) _offlineModsHash = "";   // the offline copy is rebuilt with the updated mod
         if (_car != null) _ = LoadCarAsync(_car);
+    }
+
+    private async void PromptUnlockAeroTuning()
+    {
+        if (_car == null || _ids == null || _stock == null) return;
+        var car = _car;
+        var ids = _ids;
+        var res = MessageBox.Show(
+            $"Unlock aerodynamic downforce tuning in the in-game Tuning Menu?\n\n" +
+            $"• Click YES to unlock downforce tuning on ALL wing and bumper levels for {_car.Media} (creates dedicated adjustable downforce ranges for stock, street, sport, race and removed aero).\n\n" +
+            $"• Click NO to unlock downforce tuning for ALL CARS in the game database.\n\n" +
+            $"• Click CANCEL to abort.",
+            "Unlock Aero Tuning", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+
+        if (res == MessageBoxResult.Cancel) return;
+        bool allCars = res == MessageBoxResult.No;
+        bool keep = !_status.DatabaseReady || KeepCheck.IsChecked == true;
+
+        var error = await Task.Run(() =>
+        {
+            var db = CurrentDb();
+            string sql = allCars
+                ? Upgrades.UnlockAeroTuningForAllCars(db)
+                : Upgrades.UnlockAeroTuningForCar(db, ids);
+            var err = db.Execute(sql, allCars ? "Unlocked aero tuning for all cars" : $"{car.Media}: unlocked aero tuning");
+            if (err == null && keep && !allCars) CarModel.UpsertCarMod(_main.Settings, car.Media, CarModel.DiffAgainstStock(db, _stock, ids));
+            if (!db.IsLive) _offlineModsHash = string.Join("|", _main.Settings.DbMods.Where(m => m.Enabled).Select(m => m.Sql.GetHashCode()));
+            return err;
+        });
+
+        if (error != null)
+        {
+            _main.SetStatus("Could not unlock aero tuning: " + error);
+            return;
+        }
+
+        _main.SetStatus(allCars
+            ? "Unlocked aero downforce tuning for all cars in the game!"
+            : $"Unlocked aero downforce tuning on {car.Media} for all wing & front bumper levels.");
+        _main.HomePage.RefreshSummary();
+        UpdateModifiedText();
+        await LoadCarAsync(car);
     }
 
     private async void OpenAddDialog(UpgradeKind kind, string? table)
@@ -385,12 +428,17 @@ public partial class CarsView : UserControl
         foreach (var t in def.Tables)
         {
             if (def.Kind != GroupKind.MultiTable) { gd.Tables.Add(t); continue; }
-            var n = db.Query($"SELECT COUNT(*) FROM {DbHistory.QuoteIdent(t)} WHERE {gd.Where};", out _);
+            var where = def.GetWhere(t, ids);
+            if (where == null) continue;
+            var n = db.Query($"SELECT COUNT(*) FROM {DbHistory.QuoteIdent(t)} WHERE {where};", out _);
             if (n is { Rows.Count: > 0 } && n.Rows[0][0] is { } c && c != "0") gd.Tables.Add(t);
         }
         foreach (var (table, column, side) in def.RowLabelRefs)
         {
-            var r = db.Query($"SELECT Level, IsStock, {DbHistory.QuoteIdent(column)} FROM {DbHistory.QuoteIdent(table)} WHERE Ordinal = {ids.CarId};", out _);
+            string refWhere = table.StartsWith("List_UpgradeCarBody", StringComparison.OrdinalIgnoreCase)
+                ? (ids.BodyId is { } b ? $"CarBodyId = {b}" : "1=0")
+                : $"Ordinal = {ids.CarId}";
+            var r = db.Query($"SELECT Level, IsStock, {DbHistory.QuoteIdent(column)} FROM {DbHistory.QuoteIdent(table)} WHERE {refWhere};", out _);
             if (r == null) continue;
             foreach (var row in r.Rows)
             {
@@ -399,14 +447,15 @@ public partial class CarsView : UserControl
                 gd.RefLabels[row[2]!] = gd.RefLabels.TryGetValue(row[2]!, out var prev) ? prev + ", " + label : label;
             }
         }
-        if (gd.Tables.Count > 0) LoadTable(gd, gd.Tables[0], db);
+        if (gd.Tables.Count > 0) LoadTable(gd, gd.Tables[0], db, ids);
         return gd;
     }
 
-    private void LoadTable(GroupData gd, string table, ICarDb db)
+    private void LoadTable(GroupData gd, string table, ICarDb db, CarIds ids)
     {
         gd.Table = table;
-        var q = $"SELECT * FROM {DbHistory.QuoteIdent(table)} WHERE {gd.Where};";
+        string tableWhere = gd.Def.GetWhere(table, ids) ?? gd.Where!;
+        var q = $"SELECT * FROM {DbHistory.QuoteIdent(table)} WHERE {tableWhere};";
         gd.Current = db.Query(q, out _);
         var stock = _stock!.Query(q, out _);
         gd.Stock.Clear();
@@ -417,6 +466,7 @@ public partial class CarsView : UserControl
         if (stock != null && KeyIndex(stock, gd.Def.KeyColumn) is var sk and >= 0)
             foreach (var r in stock.Rows.Where(r => r[sk] != null)) gd.Stock[r[sk]!] = r;
         int lvl = gd.Current.Columns.IndexOf("Level"), isStock = gd.Current.Columns.IndexOf("IsStock");
+        int df0Idx = gd.Current.Columns.IndexOf("Downforce0"), df1Idx = gd.Current.Columns.IndexOf("Downforce1");
         var rows = gd.Current.Rows.Where(r => key >= 0 && r[key] != null).ToList();
         if (lvl >= 0) rows = rows.OrderBy(r => double.TryParse(r[lvl], NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : 0).ToList();
         foreach (var r in rows)
@@ -428,6 +478,12 @@ public partial class CarsView : UserControl
             if (!gd.Stock.ContainsKey(k)) label = (lvl >= 0 ? $"Level {r[lvl]}" : label) + " · added by you";
             if (lvl >= 0 && int.TryParse(r[lvl], NumberStyles.Integer, CultureInfo.InvariantCulture, out var lv) && !Upgrades.InShop(table, lv))
                 label += " · not shown in the shop (no slot for this level)";
+            if (df0Idx >= 0 && df1Idx >= 0)
+            {
+                bool locked = r[df0Idx] == r[df1Idx];
+                label += locked ? " [Locked in tuning]" : " [Adjustable tuning]";
+                if (long.TryParse(k, out var kid) && kid < 100) label += " (shared global physics)";
+            }
             gd.Rows.Add((k, label));
         }
         gd.SelectedKey = isStock >= 0 ? rows.FirstOrDefault(r => r[isStock] == "1")?[key] ?? gd.Rows.FirstOrDefault().Key : gd.Rows.FirstOrDefault().Key;
@@ -446,6 +502,41 @@ public partial class CarsView : UserControl
         head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         head.Children.Add(new TextBlock { Text = gd.Def.Title, Style = (Style)FindResource("SectionHeading") });
+
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal };
+        Grid.SetColumn(buttons, 1);
+        head.Children.Add(buttons);
+
+        if (gd.Def.Tables.Contains("List_AeroPhysics"))
+        {
+            var unlockBtn = new Button
+            {
+                Content = "Unlock Aero Tuning…",
+                Style = (Style)FindResource("GlassBtnPrimary"),
+                Padding = new Thickness(12, 4, 12, 4),
+                Margin = new Thickness(0, 0, 6, 0),
+                VerticalAlignment = VerticalAlignment.Top,
+                ToolTip = "Unlocks the Downforce tuning slider in game on wing and bumper parts that are normally locked (e.g. Stock, Street, Sport or Removed parts).",
+            };
+            unlockBtn.Click += (_, _) => PromptUnlockAeroTuning();
+            buttons.Children.Add(unlockBtn);
+        }
+
+        if (gd.Def.Title == "Wing & bumper upgrades")
+        {
+            var removePartBtn = new Button
+            {
+                Content = "+ Remove part…",
+                Style = (Style)FindResource("GlassBtn"),
+                Padding = new Thickness(12, 4, 12, 4),
+                Margin = new Thickness(0, 0, 6, 0),
+                VerticalAlignment = VerticalAlignment.Top,
+                ToolTip = "Add part removal upgrades (hood removal, bumper removal, rear wing removal, side skirt removal) with RequiresGraphics = 0.",
+            };
+            removePartBtn.Click += (_, _) => OpenAddDialog(UpgradeKind.BodyPart, null);
+            buttons.Children.Add(removePartBtn);
+        }
+
         if (gd.Def.AddKind is { } addKind && gd.Where != null)
         {
             var add = new Button
@@ -458,13 +549,13 @@ public partial class CarsView : UserControl
                     UpgradeKind.TireCompound => "+ Add compound",
                     UpgradeKind.TireWidth => "+ Add wider tyres",
                     UpgradeKind.Spacers => "+ Set spacers",
+                    UpgradeKind.BodyPart => "+ Remove part",
                     _ => "+ Add",
                 },
                 Style = (Style)FindResource("GlassBtn"), Padding = new Thickness(12, 4, 12, 4), VerticalAlignment = VerticalAlignment.Top,
             };
             add.Click += (_, _) => OpenAddDialog(addKind, addKind == UpgradeKind.ExtraLevel ? gd.Table : null);
-            Grid.SetColumn(add, 1);
-            head.Children.Add(add);
+            buttons.Children.Add(add);
         }
         stack.Children.Add(head);
         if (gd.Shared != null)
@@ -517,7 +608,7 @@ public partial class CarsView : UserControl
             {
                 if (part.SelectedItem is not ComboBoxItem { Tag: string t } || _db == null) return;
                 var db = _db;
-                await Task.Run(() => LoadTable(gd, t, db));
+                await Task.Run(() => LoadTable(gd, t, db, _ids!));
                 FillRows();
                 UpdateRemove();
                 BuildFields(gd, fields);

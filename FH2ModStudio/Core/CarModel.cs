@@ -22,11 +22,20 @@ public sealed class GroupDef
     public string[] Tables { get; init; } = Array.Empty<string>();
     public string KeyColumn { get; init; } = "Id";
     public Func<CarIds, string?> Where { get; init; } = _ => null;     // null = not applicable for this car
+    public Func<string, CarIds, string?>? WhereForTable { get; init; }
     public string[]? Fields { get; init; }                              // null = every numeric column not hidden
     public (string Table, string Column, string Side)[] RowLabelRefs { get; init; } = Array.Empty<(string, string, string)>();
     public Func<CarIds, string?>? SharedWarning { get; init; }
     /// <summary>Which add-upgrade flow this card's "+ Add" button opens (null = none).</summary>
     public UpgradeKind? AddKind { get; init; }
+
+    public string? GetWhere(string table, CarIds ids)
+    {
+        if (WhereForTable != null) return WhereForTable(table, ids);
+        if (table.StartsWith("List_UpgradeCarBody", StringComparison.OrdinalIgnoreCase))
+            return ids.BodyId is { } b ? $"CarBodyId = {b}" : null;
+        return Where(ids);
+    }
 }
 
 public sealed record SectionDef(string Id, string Title, string Description, GroupDef[] Groups);
@@ -39,7 +48,7 @@ public static class CarModel
 
     public static readonly HashSet<string> HiddenColumns = new(StringComparer.OrdinalIgnoreCase)
     {
-        "Id", "Ordinal", "EngineID", "DrivetrainID", "ManufacturerID", "Level", "IsStock", "RequiresGraphics",
+        "Id", "Ordinal", "EngineID", "DrivetrainID", "ManufacturerID", "Level", "IsStock",
         "DamageModDefID", "SuspensionDamageModDefID", "TiresDamageModDefID", "PartsStringId", "Sequence",
         "FrontSpringDamperPhysicsID", "RearSpringDamperPhysicsID", "AntiSwayPhysicsID", "AeroPhysicsID",
         "TorqueCurveFullThrottleID", "NumRPMEntriesArray", "SpringDamperPhysicsID", "CarId", "CarBodyID", "PowertrainId",
@@ -60,6 +69,10 @@ public static class CarModel
     private static string? ByBody(CarIds c) => c.BodyId is { } b ? $"CarBodyId = {b}" : null;
     private static string? ByEngine(CarIds c) => c.EngineId is { } e ? $"EngineID = {e}" : null;
     private static string? ByDrivetrain(CarIds c) => c.DrivetrainId is { } d ? $"DrivetrainID = {d}" : null;
+    private static string? ByAeroPhysics(CarIds c) =>
+        c.BodyId is { } b
+            ? $"AeroPhysicsID IN (SELECT AeroPhysicsID FROM List_UpgradeRearWing WHERE Ordinal = {c.CarId} UNION SELECT AeroPhysicsID FROM List_UpgradeCarBodyFrontBumper WHERE CarBodyId = {b})"
+            : $"AeroPhysicsID IN (SELECT AeroPhysicsID FROM List_UpgradeRearWing WHERE Ordinal = {c.CarId})";
     private static string? EngineShared(CarIds c) => c.EngineShare > 1 ? $"This engine is shared with {c.EngineShare - 1} other car(s) - changes affect them too." : null;
     private static string? DrivetrainShared(CarIds c) => c.DrivetrainShare > 1 ? $"This drivetrain is shared with {c.DrivetrainShare - 1} other car(s) - changes affect them too." : null;
 
@@ -194,8 +207,27 @@ public static class CarModel
                 "BodyAeroLateralDragRear", "BodyAeroForwardDownforceFront", "BodyAeroForwardDownforceRear", "BodyAeroAngleZeroDownforce", "BodyAeroWIForceScale"),
             new GroupDef
             {
+                Title = "Wing & bumper downforce (List_AeroPhysics)",
+                Note = "Minimum and maximum downforce and drag. When Min downforce equals Max downforce, downforce tuning is locked in game.",
+                Kind = GroupKind.MultiRow, Tables = new[] { "List_AeroPhysics" },
+                KeyColumn = "AeroPhysicsID", Where = ByAeroPhysics,
+                RowLabelRefs = new[]
+                {
+                    ("List_UpgradeRearWing", "AeroPhysicsID", "Rear wing"),
+                    ("List_UpgradeCarBodyFrontBumper", "AeroPhysicsID", "Front bumper"),
+                },
+            },
+            new GroupDef
+            {
                 Title = "Wing & bumper upgrades", Kind = GroupKind.MultiTable, Where = ByCar,
-                Tables = new[] { "List_UpgradeRearWing", "List_UpgradeCarBodyFrontBumper" },
+                Tables = new[]
+                {
+                    "List_UpgradeRearWing",
+                    "List_UpgradeCarBodyFrontBumper",
+                    "List_UpgradeCarBodyRearBumper",
+                    "List_UpgradeCarBodySideSkirt",
+                    "List_UpgradeCarBodyHood",
+                },
                 AddKind = UpgradeKind.ExtraLevel,
             },
         }),
@@ -314,6 +346,16 @@ public static class CarModel
         ["Mass"] = new("Body mass", "kg"),
         ["InitialMass"] = new("Original body mass", "kg"),
         ["CMHeight"] = new("Centre of mass height", "m"),
+        ["Downforce0"] = new("Min downforce", "lbf", "Minimum downforce at full left slider. If equal to Max downforce, tuning is locked in game."),
+        ["Downforce1"] = new("Max downforce", "lbf", "Maximum downforce at full right slider. Must differ from Min downforce to unlock aero tuning."),
+        ["Drag0"] = new("Min drag", null, "Aero drag scale at minimum downforce slider."),
+        ["Drag1"] = new("Max drag", null, "Aero drag scale at maximum downforce slider."),
+        ["DefaultTuneSlider"] = new("Default tune slider", "0-1", "Default slider position between min and max (0.0 = min, 0.5 = middle, 1.0 = max)."),
+        ["AngleZeroDownforce"] = new("Angle at zero downforce", "°", "Pitch angle where downforce drops to zero."),
+        ["LateralDrag"] = new("Lateral drag", null, "Sideways aerodynamic drag coefficient."),
+        ["RequiresGraphics"] = new("Requires 3D model", "0/1", "1 = render 3D mesh in game, 0 = remove/hide 3D mesh (used by Level 4 part removal upgrades)."),
+        ["BodyAeroForwardDownforceFront"] = new("Forward downforce (front)", "lbf", "Aerodynamic downforce acting on the front axle."),
+        ["BodyAeroForwardDownforceRear"] = new("Forward downforce (rear)", "lbf", "Aerodynamic downforce acting on the rear axle."),
     };
 
     public static string Humanize(string column)
