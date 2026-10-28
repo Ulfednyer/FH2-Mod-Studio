@@ -1,0 +1,225 @@
+<UserControl x:Class="FH2ModStudio.Views.GraphicsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12,10">
+            <StackPanel MaxWidth="980">
+                <TextBlock Text="Graphics" FontSize="18" FontWeight="Bold" Foreground="#1C1C1E" Margin="0,0,0,4"/>
+                <TextBlock Style="{StaticResource BodyTxt}" Margin="0,0,0,4"
+                           Text="Pick a preset, adjust what you like, then press Apply. Each option shows when it takes effect."/>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <Border Style="{StaticResource BadgeLive}" Margin="0"><TextBlock Text="Live" Foreground="#1E8E3E" Style="{StaticResource BadgeTxt}"/></Border>
+                    <TextBlock Text="changes instantly" FontSize="11" Foreground="#8E8E93" Margin="6,0,14,0" VerticalAlignment="Center"/>
+                    <Border Style="{StaticResource BadgeRestart}" Margin="0"><TextBlock Text="Next game start" Foreground="#C96F00" Style="{StaticResource BadgeTxt}"/></Border>
+                    <TextBlock Text="restart the game after Apply" FontSize="11" Foreground="#8E8E93" Margin="6,0,14,0" VerticalAlignment="Center"/>
+                    <Border Style="{StaticResource BadgeLaunch}" Margin="0"><TextBlock Text="Next launch" Foreground="#0062CC" Style="{StaticResource BadgeTxt}"/></Border>
+                    <TextBlock Text="restart Azimuth after Apply" FontSize="11" Foreground="#8E8E93" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- ════════ QUALITY ════════ -->
+                <TextBlock Text="Shadows &amp; reflections" Style="{StaticResource GroupCaption}"/>
+                <Border Style="{StaticResource GlassCard}" Margin="0,0,0,8">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <TextBlock Text="Quality preset" Style="{StaticResource SectionHeading}" Margin="0"/>
+                            <Border Style="{StaticResource BadgeRestart}"><TextBlock Text="Next game start" Foreground="#C96F00" Style="{StaticResource BadgeTxt}"/></Border>
+                        </StackPanel>
+                        <ListBox x:Name="PresetList" Background="Transparent" BorderThickness="0"
+                                 ItemContainerStyle="{StaticResource MacroListItem}" SelectionChanged="PresetList_SelectionChanged"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <ListBox.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <UniformGrid Rows="1"/>
+                                </ItemsPanelTemplate>
+                            </ListBox.ItemsPanel>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="0,0,4,0">
+                                        <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="Bold" Foreground="#1C1C1E"/>
+                                        <TextBlock Text="{Binding Summary}" FontSize="11" Foreground="#48484A" TextWrapping="Wrap" Margin="0,2,0,4"/>
+                                        <TextBlock Text="{Binding Cost}" FontSize="10" FontWeight="SemiBold" Foreground="#8E8E93" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <Button x:Name="CustomizeBtn" Content="Customize ▾" Style="{StaticResource GlassBtn}" HorizontalAlignment="Left"
+                                Margin="0,8,0,0" Click="Customize_Click"/>
+                        <Border x:Name="CustomPanel" Style="{StaticResource GlassCardSm}" Visibility="Collapsed" Margin="0,6,0,0">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="12"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Text="Shadow map resolution" Style="{StaticResource CaptionTxt}"/>
+                                        <ComboBox x:Name="ShadowCombo" Style="{StaticResource GlassCombo}" SelectionChanged="Any_Changed"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock Text="Windshield / mirror reflection resolution" Style="{StaticResource CaptionTxt}"/>
+                                        <ComboBox x:Name="WindshieldCombo" Style="{StaticResource GlassCombo}" SelectionChanged="Any_Changed"/>
+                                    </StackPanel>
+                                </Grid>
+                                <TextBlock Style="{StaticResource BodyTxt}" FontSize="11" Margin="0,6,0,6"
+                                           Text="Only sizes the game supports are offered. 8192 is not in the game's own list but was tested to work; it needs a lot of video memory."/>
+                                <CheckBox x:Name="Lod0Check" Content="Always draw your car at its highest detail (LOD 0) - the stock game uses a lower detail level"
+                                          Checked="Any_Changed" Unchecked="Any_Changed"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Border>
+
+                <!-- ════════ DRAW DISTANCE ════════ -->
+                <TextBlock Text="Draw distance" Style="{StaticResource GroupCaption}"/>
+                <Border Style="{StaticResource GlassCard}" Margin="0,0,0,8">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <TextBlock Text="Detail distance multiplier" Style="{StaticResource SectionHeading}" Margin="0"/>
+                            <Border Style="{StaticResource BadgeRestart}"><TextBlock Text="Next game start" Foreground="#C96F00" Style="{StaticResource BadgeTxt}"/></Border>
+                        </StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="60"/>
+                            </Grid.ColumnDefinitions>
+                            <Slider x:Name="DistanceSlider" Minimum="1" Maximum="4" TickFrequency="0.5" IsSnapToTickEnabled="True"
+                                    TickPlacement="BottomRight" ValueChanged="Any_Changed"/>
+                            <TextBlock x:Name="DistanceTxt" Grid.Column="1" FontSize="14" FontWeight="Bold" Foreground="#1C1C1E"
+                                       HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                        </Grid>
+                        <TextBlock Style="{StaticResource BodyTxt}" Margin="0,4,0,0"
+                                   Text="How far away cars keep their detailed models, and how far crowds stay visible. 1× is the stock game."/>
+                    </StackPanel>
+                </Border>
+
+                <!-- ════════ MOTION BLUR ════════ -->
+                <TextBlock Text="Motion blur" Style="{StaticResource GroupCaption}"/>
+                <Border Style="{StaticResource GlassCard}" Margin="0,0,0,8">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <TextBlock Text="Blur strength per camera" Style="{StaticResource SectionHeading}" Margin="0"/>
+                            <Border Style="{StaticResource BadgeLive}"><TextBlock Text="Live" Foreground="#1E8E3E" Style="{StaticResource BadgeTxt}"/></Border>
+                        </StackPanel>
+                        <TextBlock Style="{StaticResource BodyTxt}" Margin="0,0,0,8"
+                                   Text="Drag while driving to see the result immediately. Chase and side cameras use a fixed strength the game does not let us change."/>
+                        <Grid x:Name="BlurGrid">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="130"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="100"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition/>
+                                <RowDefinition/>
+                                <RowDefinition/>
+                            </Grid.RowDefinitions>
+                        </Grid>
+                        <Separator Margin="0,10"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <TextBlock Text="Blur reference frame rate" Style="{StaticResource SectionHeading}" Margin="0"/>
+                            <Border Style="{StaticResource BadgeRestart}"><TextBlock Text="Next game start" Foreground="#C96F00" Style="{StaticResource BadgeTxt}"/></Border>
+                        </StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="280"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Style="{StaticResource BodyTxt}" VerticalAlignment="Center" Margin="0,0,12,0"
+                                       Text="The game sizes motion blur for this frame rate. Set it close to the FPS you actually play at - a value far below your FPS makes the blur much longer (the stock 60 at 144 FPS looks smeared)."/>
+                            <ComboBox x:Name="FpsCombo" Grid.Column="1" Style="{StaticResource GlassCombo}" SelectionChanged="Any_Changed"/>
+                        </Grid>
+                        <TextBlock x:Name="FpsWarning" FontSize="12" FontWeight="SemiBold" Foreground="#C96F00" Margin="0,6,0,0"
+                                   TextWrapping="Wrap" Visibility="Collapsed"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- ════════ ANTI-ALIASING ════════ -->
+                <TextBlock Text="Anti-aliasing" Style="{StaticResource GroupCaption}"/>
+                <Border Style="{StaticResource GlassCard}" Margin="0,0,0,8">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="180"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                <TextBlock Text="MSAA samples" Style="{StaticResource SectionHeading}" Margin="0"/>
+                                <Border Style="{StaticResource BadgeLaunch}"><TextBlock Text="Next launch" Foreground="#0062CC" Style="{StaticResource BadgeTxt}"/></Border>
+                            </StackPanel>
+                            <TextBlock x:Name="MsaaInfo" Style="{StaticResource BodyTxt}" Margin="0,0,12,0"
+                                       Text="Smooths jagged edges. Set when the game starts, so restart Azimuth after changing it."/>
+                        </StackPanel>
+                        <ComboBox x:Name="MsaaCombo" Grid.Column="1" Style="{StaticResource GlassCombo}" VerticalAlignment="Center" SelectionChanged="Any_Changed"/>
+                    </Grid>
+                </Border>
+
+                <!-- ════════ LIVE VALUES ════════ -->
+                <TextBlock Text="Advanced" Style="{StaticResource GroupCaption}"/>
+                <Border Style="{StaticResource GlassCard}" Margin="0,0,0,8">
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Values the game is using right now" Style="{StaticResource SectionHeading}"/>
+                                <TextBlock Style="{StaticResource BodyTxt}"
+                                           Text="Confirms your settings reached the game. The first read searches game memory and takes about a minute."/>
+                            </StackPanel>
+                            <Button x:Name="ReadLiveBtn" Grid.Column="1" Content="Read live values" Style="{StaticResource GlassBtn}"
+                                    VerticalAlignment="Top" Click="ReadLive_Click"/>
+                        </Grid>
+                        <ProgressBar x:Name="LiveProgress" IsIndeterminate="True" Height="4" Margin="0,8,0,0" Visibility="Collapsed"/>
+                        <ItemsControl x:Name="LiveList" Margin="0,8,0,0">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,2">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="280"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding Label}" FontSize="12" Foreground="#48484A"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding Value}" FontSize="12" FontWeight="SemiBold" Foreground="#1C1C1E"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- ════════ APPLY BAR ════════ -->
+        <Border Grid.Row="1" BorderThickness="0,1,0,0" BorderBrush="#25000000" Padding="16,8">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                    <GradientStop Color="#D8FFFFFF" Offset="0"/>
+                    <GradientStop Color="#B8FFFFFF" Offset="1"/>
+                </LinearGradientBrush>
+            </Border.Background>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Ellipse x:Name="DirtyDot" Width="8" Height="8" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="DirtyTxt" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </StackPanel>
+                <Button Grid.Column="1" Content="Restore stock graphics" Style="{StaticResource GlassBtnRed}" Click="RestoreStock_Click"
+                        ToolTip="Puts the original game files back. Your choices here are kept so you can re-apply them."/>
+                <Button x:Name="ApplyBtn" Grid.Column="2" Content="Apply" Style="{StaticResource GlassBtnPrimary}" Padding="26,8"
+                        Click="Apply_Click"/>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

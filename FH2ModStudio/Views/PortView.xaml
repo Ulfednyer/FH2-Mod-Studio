@@ -1,0 +1,210 @@
+<UserControl x:Class="FH2ModStudio.Views.PortView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12,10">
+        <StackPanel MaxWidth="980">
+            <TextBlock Text="Port FH3 cars" FontSize="18" FontWeight="Bold" Foreground="#1C1C1E" Margin="0,0,0,4"/>
+            <TextBlock Style="{StaticResource BodyTxt}" Margin="0,0,0,12"
+                       Text="Pick Forza Horizon 3 cars that Forza Horizon 2 doesn't have and convert them with everything learned so far: models, materials, paints, sounds and database rows. Every car is checked after it is installed; a car that fails is rolled back and listed with the reason."/>
+
+            <!-- ════════ PORTER ════════ -->
+            <TextBlock Text="Porter" Style="{StaticResource GroupCaption}"/>
+            <Border Style="{StaticResource GlassCard}" Margin="0,0,0,8">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse x:Name="SetupDot" Width="8" Height="8" Fill="#8E8E93" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock x:Name="SetupTitle" Text="Checking the porter…" FontSize="13" FontWeight="SemiBold" Foreground="#1C1C1E"/>
+                        </StackPanel>
+                        <TextBlock x:Name="SetupDetail" Style="{StaticResource BodyTxt}" FontSize="11" Margin="16,4,0,0" TextWrapping="Wrap"/>
+                        <Grid x:Name="PathsGrid" Margin="16,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="190"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Text="Forza Horizon 2 install location" FontSize="12" FontWeight="SemiBold" Foreground="#1C1C1E" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="0" Grid.Column="1" x:Name="Fh2PathTxt" FontSize="11" Foreground="#636366" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="6,0"/>
+                            <Button Grid.Row="0" Grid.Column="2" Content="Browse…" Style="{StaticResource GlassBtn}" Margin="0,2" Tag="game" Click="BrowsePath_Click"
+                                    ToolTip="The Forza Horizon 2 folder that contains Mount (azimuth game folder)"/>
+                            <TextBlock Grid.Row="1" Text="Forza Horizon 3 install location" FontSize="12" FontWeight="SemiBold" Foreground="#1C1C1E" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="1" Grid.Column="1" x:Name="Fh3PathTxt" FontSize="11" Foreground="#636366" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="6,0"/>
+                            <Button Grid.Row="1" Grid.Column="2" Content="Browse…" Style="{StaticResource GlassBtn}" Margin="0,2" Tag="fh3" Click="BrowsePath_Click"
+                                    ToolTip="The Forza Horizon 3 installation folder (the one that contains media)"/>
+                            <TextBlock Grid.Row="2" Text="FH3 update / DLC media" FontSize="12" FontWeight="SemiBold" Foreground="#1C1C1E" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="2" Grid.Column="1" x:Name="Fh3ExtraTxt" FontSize="11" Foreground="#636366" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="6,0"/>
+                            <StackPanel Grid.Row="2" Grid.Column="2" Orientation="Horizontal">
+                                <Button Content="Clear" Style="{StaticResource GlassBtn}" Margin="0,2,6,2" Click="ClearExtra_Click"
+                                        ToolTip="Use only the Forza Horizon 3 install's media folder"/>
+                                <Button Content="Browse…" Style="{StaticResource GlassBtn}" Margin="0,2" Tag="fh3_extra" Click="BrowsePath_Click"
+                                        ToolTip="Optional: a second Forza Horizon 3 media folder (an update or DLC tree kept apart from the install, with cars, db, stripped …). Its files win over the install's. Normally not needed: DLC cars live in the install's media folder."/>
+                            </StackPanel>
+                            <TextBlock Grid.Row="3" Text="Converter (ForzaToolsCli.exe)" FontSize="12" FontWeight="SemiBold" Foreground="#1C1C1E" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="3" Grid.Column="1" x:Name="CliPathTxt" FontSize="11" Foreground="#636366" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="6,0"/>
+                            <Button Grid.Row="3" Grid.Column="2" Content="Browse…" Style="{StaticResource GlassBtn}" Margin="0,2" Tag="converter" Click="BrowsePath_Click"
+                                    ToolTip="ForzaToolsCli.exe, the model/material converter the porter runs first"/>
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Margin="16,8,0,0">
+                            <Button x:Name="RecheckBtn" Content="Re-check installed cars" Style="{StaticResource GlassBtn}" Margin="0,0,6,0"
+                                    Click="RecheckCars_Click" ToolTip="Runs every model, file and database check on all cars the porter installed"/>
+                            <Button x:Name="NamesBtn" Content="Write car names" Style="{StaticResource GlassBtn}"
+                                    Click="Names_Click"
+                                    ToolTip="Puts the names of all installed ported cars (and new makes) into the game's string tables for every language, so they show in the pause and race menus. Conversions do this automatically; use this for cars installed before."/>
+                        </StackPanel>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Content="Choose folder…" Style="{StaticResource GlassBtn}" Margin="0,0,6,0" Click="ChooseFolder_Click"
+                                ToolTip="The folder that contains fh3port.py (normally fh2sql\fh3port)"/>
+                        <Button Content="Check again" Style="{StaticResource GlassBtn}" Click="Recheck_Click"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- ════════ PICK CARS ════════ -->
+            <TextBlock Text="Choose cars" Style="{StaticResource GroupCaption}"/>
+            <Border Style="{StaticResource GlassCard}" Margin="0,0,0,8">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="8"/>
+                            <ColumnDefinition Width="190"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Search (make, model, year or MediaName)" Style="{StaticResource CaptionTxt}"/>
+                            <TextBox x:Name="SearchBox" Style="{StaticResource GlassTextBox}" TextChanged="Filter_Changed"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="Show" Style="{StaticResource CaptionTxt}"/>
+                            <ComboBox x:Name="StatusFilter" Style="{StaticResource GlassCombo}" SelectionChanged="Filter_Changed">
+                                <ComboBoxItem Content="Not ported yet" Tag="new" IsSelected="True"/>
+                                <ComboBoxItem Content="Already installed" Tag="ported"/>
+                                <ComboBoxItem Content="Failed before" Tag="failed"/>
+                                <ComboBoxItem Content="Already in FH2 (replace)" Tag="in_fh2"/>
+                                <ComboBoxItem Content="All FH3 cars" Tag="all"/>
+                            </ComboBox>
+                        </StackPanel>
+                    </Grid>
+                    <Grid Margin="0,6,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock x:Name="CarComboCaption" Text="Car" Style="{StaticResource CaptionTxt}"/>
+                            <ComboBox x:Name="CarCombo" Style="{StaticResource GlassCombo}" MaxDropDownHeight="420"
+                                      SelectionChanged="CarCombo_SelectionChanged"/>
+                        </StackPanel>
+                        <Button x:Name="AddBtn" Grid.Column="1" Content="Add" Style="{StaticResource GlassBtnPrimary}" Padding="18,7"
+                                Margin="8,0,0,3" VerticalAlignment="Bottom" Click="Add_Click" IsEnabled="False"/>
+                        <Button x:Name="AddZipBtn" Grid.Column="2" Content="Add zip file…" Style="{StaticResource GlassBtn}" Padding="12,7"
+                                Margin="6,0,0,3" VerticalAlignment="Bottom" Click="AddZip_Click"
+                                ToolTip="Pick a Forza Horizon 3 car zip from anywhere on disk (named like FH3 names it, e.g. por_918spyder_14.zip)"/>
+                    </Grid>
+                    <TextBlock x:Name="CarInfo" Style="{StaticResource BodyTxt}" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"/>
+
+                    <Separator Margin="0,10"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="ChosenCaption" Text="Cars to convert (none yet)" Style="{StaticResource SectionHeading}" Margin="0"/>
+                        <Button Grid.Column="1" Content="Clear" Style="{StaticResource GlassBtn}" Click="Clear_Click"/>
+                    </Grid>
+                    <ItemsControl x:Name="ChosenList" Margin="0,6,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Style="{StaticResource GlassCardSm}" Margin="0,0,0,4" Padding="10,6">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold" Foreground="#1C1C1E"/>
+                                            <TextBlock FontSize="11" Foreground="#8E8E93">
+                                                <Run Text="{Binding Media, Mode=OneWay}"/><Run Text="  ·  class "/><Run Text="{Binding Class, Mode=OneWay}"/><Run Text="  ·  "/><Run Text="{Binding StatusText, Mode=OneWay}"/>
+                                            </TextBlock>
+                                            <TextBlock Text="{Binding SourceText, Mode=OneWay}" FontSize="11" Foreground="#8E8E93" TextTrimming="CharacterEllipsis"/>
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Content="Remove" Style="{StaticResource GlassBtn}" Tag="{Binding}" Click="Remove_Click"/>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <Separator Margin="0,10"/>
+                    <CheckBox x:Name="PlatesCheck" Content="Import licence plate"
+                              Checked="Plates_Changed" Unchecked="Plates_Changed"/>
+                    <TextBlock Style="{StaticResource BodyTxt}" FontSize="11" Margin="22,2,0,0" TextWrapping="Wrap"
+                               Text="Forza Horizon 2 has no licence plates, so an imported plate shows a row of zeros. Unchecked: the plate is left out (hidden). Plate lights and brackets stay."/>
+
+                    <Grid Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="RunHint" Style="{StaticResource BodyTxt}" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                        <Button x:Name="PortAllBtn" Grid.Column="1" Content="Port all cars" Style="{StaticResource GlassBtn}"
+                                Margin="0,0,8,0" Padding="18,9" FontSize="13" Click="PortAll_Click" IsEnabled="False"
+                                ToolTip="Convert and install all Forza Horizon 3 cars that are not already in Forza Horizon 2"/>
+                        <Button x:Name="ConvertBtn" Grid.Column="2" Content="Convert &amp; install" Style="{StaticResource GlassBtnPrimary}"
+                                Padding="22,9" FontSize="13" Click="Convert_Click" IsEnabled="False"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- ════════ PROGRESS / RESULT ════════ -->
+            <TextBlock x:Name="ResultCaption" Text="Result" Style="{StaticResource GroupCaption}" Visibility="Collapsed"/>
+            <Border x:Name="ResultCard" Style="{StaticResource GlassCard}" Margin="0,0,0,8" Visibility="Collapsed">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse x:Name="ResultDot" Width="8" Height="8" Fill="#8E8E93" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBlock x:Name="ResultTitle" FontSize="13" FontWeight="SemiBold" Foreground="#1C1C1E"/>
+                    </StackPanel>
+                    <ProgressBar x:Name="Progress" Height="4" Margin="0,8,0,4" IsIndeterminate="True" Visibility="Collapsed"/>
+                    <ItemsControl x:Name="ResultList" Margin="0,6,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,2">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="18"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding Glyph}" Foreground="{Binding Color}" FontWeight="Bold"/>
+                                    <TextBlock Grid.Column="1" TextWrapping="Wrap" FontSize="12" Foreground="#1C1C1E">
+                                        <Run Text="{Binding Title, Mode=OneWay}" FontWeight="SemiBold"/><Run Text="  "/><Run Text="{Binding Detail, Mode=OneWay}" Foreground="#636366"/>
+                                    </TextBlock>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <Button x:Name="UndoBtn" Content="Undo this conversion" Style="{StaticResource GlassBtnRed}" Margin="0,0,6,0"
+                                Click="Undo_Click" Visibility="Collapsed"
+                                ToolTip="Puts the database and shared files back to how they were before this run and deletes the files it created"/>
+                        <Button x:Name="LogBtn" Content="Show log ▾" Style="{StaticResource GlassBtn}" Margin="0,0,6,0" Click="Log_Click"/>
+                        <Button Content="Open porter folder" Style="{StaticResource GlassBtn}" Click="OpenFolder_Click"/>
+                    </StackPanel>
+                    <TextBox x:Name="LogBox" Visibility="Collapsed" Margin="0,8,0,0" Height="260" IsReadOnly="True"
+                             FontFamily="Consolas" FontSize="11" TextWrapping="NoWrap" Background="#90FFFFFF" BorderBrush="#30000000"
+                             VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"/>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

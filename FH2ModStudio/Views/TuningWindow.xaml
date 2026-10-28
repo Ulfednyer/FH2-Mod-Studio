@@ -1,0 +1,117 @@
+<Window TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="Auto" UseLayoutRounding="True" SnapsToDevicePixels="True" x:Class="FH2ModStudio.Views.TuningWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Drift setup &amp; tuning ranges" Height="720" Width="760" MinHeight="480" MinWidth="640"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="0" ResizeBorderThickness="5" GlassFrameThickness="0"/>
+    </WindowChrome.WindowChrome>
+    <Border BorderThickness="1">
+        <Border.BorderBrush>
+            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                <GradientStop Color="#90FFFFFF" Offset="0"/>
+                <GradientStop Color="#20FFFFFF" Offset="1"/>
+            </LinearGradientBrush>
+        </Border.BorderBrush>
+        <Border Background="#E6F6F8FA">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="38"/>
+                    <RowDefinition/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Title bar -->
+                <Border MouseDown="TitleBar_MouseDown" BorderThickness="0,0,0,1" BorderBrush="#30000000">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                            <GradientStop Color="#D8FFFFFF" Offset="0"/>
+                            <GradientStop Color="#B0FFFFFF" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Border.Background>
+                    <Grid>
+                        <TextBlock Text="Drift setup &amp; tuning ranges" FontSize="13" FontWeight="SemiBold" Foreground="#1C1C1E" VerticalAlignment="Center" Margin="16,0"/>
+                        <Border x:Name="ModeBadge" HorizontalAlignment="Right" Margin="0,0,52,0" VerticalAlignment="Center" CornerRadius="8" Padding="8,2" BorderThickness="1">
+                            <TextBlock x:Name="ModeTxt" FontSize="11" FontWeight="SemiBold"/>
+                        </Border>
+                        <Button HorizontalAlignment="Right" Width="32" Height="24" Margin="0,0,8,0" Click="Cancel_Click" BorderThickness="0"
+                                Background="Transparent" FocusVisualStyle="{x:Null}" ToolTip="Close">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="R" CornerRadius="4" Background="Transparent">
+                                        <Viewbox Width="10" Height="10">
+                                            <Path Stroke="#FF3B30" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Data="M0,0 L10,10 M10,0 L0,10"/>
+                                        </Viewbox>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="R" Property="Background" Value="#18FF3B30"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                    </Grid>
+                </Border>
+
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="16,12">
+                    <StackPanel>
+                        <TextBlock Text="Drift suspension" Style="{StaticResource GroupCaption}"/>
+                        <Border Style="{StaticResource GlassCard}" Margin="0,0,0,10">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource BodyTxt}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,8"
+                                           Text="The alignment the drift suspension (suspension level 5) comes with - the tuning menu starts from it - and the steering it gets while installed (like Forza Motorsport 7). Live: alignment and steering apply when the game next loads the car (re-select it)."/>
+                                <Grid x:Name="DriftGrid">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="230"/>
+                                        <ColumnDefinition Width="110"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Text="Tuning menu ranges" Style="{StaticResource GroupCaption}"/>
+                        <Border Style="{StaticResource GlassCard}">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource BodyTxt}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,8"
+                                           Text="Lowest and highest value every tuning slider allows, for all cars (PhysicsSettings.ini, [CarTuning]). Not in game: written to the file, read at the next start. In game: also changed in the running game - reopen the tuning menu."/>
+                                <Grid x:Name="LimitsGrid">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="230"/>
+                                        <ColumnDefinition Width="100"/>
+                                        <ColumnDefinition Width="100"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <Border Grid.Row="2" BorderThickness="0,1,0,0" BorderBrush="#25000000" Padding="16,10">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                            <GradientStop Color="#D8FFFFFF" Offset="0"/>
+                            <GradientStop Color="#B8FFFFFF" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Border.Background>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="StatusTxt" FontSize="12" Foreground="#48484A" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                        <Button Grid.Column="1" Content="Restore stock" Style="{StaticResource GlassBtn}" Margin="0,0,6,0" Click="Stock_Click"
+                                ToolTip="Fill in the game's own tuning ranges and the default drift setup (apply to use them)"/>
+                        <Button Grid.Column="2" Content="Close" Style="{StaticResource GlassBtn}" Margin="0,0,6,0" Click="Cancel_Click"/>
+                        <Button Grid.Column="3" Content="Apply" Style="{StaticResource GlassBtnPrimary}" Padding="22,8" Click="Apply_Click"/>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Border>
+    </Border>
+</Window>

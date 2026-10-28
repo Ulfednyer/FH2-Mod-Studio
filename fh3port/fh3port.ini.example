@@ -1,0 +1,7 @@
+[paths]
+# Copy to fh3port.ini - or set these in FH2 Mod Studio (Port FH3 cars tab), which writes fh3port.ini for you.
+# game: the Forza Horizon 2 folder that contains Mount (default: two folders above fh3port)
+# fh3: the Forza Horizon 3 installation folder (the one that contains media)
+# fh3_extra: optional extra FH3 media folders (update / DLC trees), ';'-separated, searched before <fh3>\media
+# converter: ForzaToolsCli.exe (default: ..\Forza Horizon 2 Convertor\ForzaToolsCli.exe)
+fh3 =

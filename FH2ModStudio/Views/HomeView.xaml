@@ -1,0 +1,119 @@
+<UserControl x:Class="FH2ModStudio.Views.HomeView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12,10">
+        <StackPanel MaxWidth="980" HorizontalAlignment="Stretch">
+            <TextBlock Text="Home" FontSize="18" FontWeight="Bold" Foreground="#1C1C1E" Margin="0,0,0,4"/>
+            <TextBlock Style="{StaticResource BodyTxt}" Margin="0,0,0,12"
+                       Text="Start the game from here and FH2 Mod Studio loads your mods automatically. Your graphics and database changes are applied every launch."/>
+
+            <!-- ════════ PLAY ════════ -->
+            <TextBlock Text="Play with mods" Style="{StaticResource GroupCaption}" Margin="0,0,0,8"/>
+            <Border Style="{StaticResource GlassCard}" Margin="0,0,0,8" Padding="18">
+                <StackPanel>
+                    <Grid Margin="0,0,0,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Orientation="Horizontal">
+                            <Border x:Name="Step1Circle" Width="30" Height="30" CornerRadius="15" Margin="0,0,10,0">
+                                <TextBlock x:Name="Step1Glyph" Text="1" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="Start Azimuth" FontSize="13" FontWeight="SemiBold" Foreground="#1C1C1E"/>
+                                <TextBlock x:Name="Step1Sub" FontSize="11" Foreground="#8E8E93"/>
+                            </StackPanel>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                            <Border x:Name="Step2Circle" Width="30" Height="30" CornerRadius="15" Margin="0,0,10,0">
+                                <TextBlock x:Name="Step2Glyph" Text="2" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="Mods loaded" FontSize="13" FontWeight="SemiBold" Foreground="#1C1C1E"/>
+                                <TextBlock x:Name="Step2Sub" FontSize="11" Foreground="#8E8E93"/>
+                            </StackPanel>
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" Orientation="Horizontal">
+                            <Border x:Name="Step3Circle" Width="30" Height="30" CornerRadius="15" Margin="0,0,10,0">
+                                <TextBlock x:Name="Step3Glyph" Text="3" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="In game" FontSize="13" FontWeight="SemiBold" Foreground="#1C1C1E"/>
+                                <TextBlock x:Name="Step3Sub" FontSize="11" Foreground="#8E8E93"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
+                    <Separator/>
+                    <Grid Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="GuidanceTxt" Style="{StaticResource BodyTxt}" FontSize="13" Foreground="#1C1C1E" VerticalAlignment="Center"/>
+                        <Button x:Name="PrimaryBtn" Grid.Column="1" Style="{StaticResource GlassBtnPrimary}" Padding="22,9" FontSize="13"
+                                Click="PrimaryBtn_Click"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- ════════ ACTIVE MODS ════════ -->
+            <TextBlock Text="What is active" Style="{StaticResource GroupCaption}"/>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Border Grid.Column="0" Style="{StaticResource GlassCard}" Margin="0,0,4,8">
+                    <StackPanel>
+                        <TextBlock Text="Graphics" Style="{StaticResource SectionHeading}"/>
+                        <TextBlock x:Name="GraphicsSummary" Style="{StaticResource BodyTxt}" Margin="0,0,0,10"/>
+                        <Button Content="Change graphics" Style="{StaticResource GlassBtn}" HorizontalAlignment="Left" Click="OpenGraphics_Click"/>
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="1" Style="{StaticResource GlassCard}" Margin="4,0,0,8">
+                    <StackPanel>
+                        <TextBlock Text="Database mods" Style="{StaticResource SectionHeading}"/>
+                        <TextBlock x:Name="DbSummary" Style="{StaticResource BodyTxt}" Margin="0,0,0,10"/>
+                        <Button Content="Open database" Style="{StaticResource GlassBtn}" HorizontalAlignment="Left" Click="OpenDatabase_Click"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- ════════ SETUP ════════ -->
+            <TextBlock Text="Setup" Style="{StaticResource GroupCaption}"/>
+            <Border Style="{StaticResource GlassCard}" Margin="0,0,0,8">
+                <StackPanel>
+                    <TextBlock Text="Locations" Style="{StaticResource SectionHeading}"/>
+                    <TextBlock Style="{StaticResource BodyTxt}" Margin="0,0,0,10"
+                               Text="Found automatically from Azimuth's settings. Only change these if a check mark is missing."/>
+                    <TextBlock Text="Azimuth (azimuth.exe)" Style="{StaticResource CaptionTxt}"/>
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="AzimuthOk" FontSize="14" FontWeight="Bold" VerticalAlignment="Center" Width="20"/>
+                        <TextBox x:Name="AzimuthBox" Grid.Column="1" Style="{StaticResource GlassTextBox}" FontSize="12" Padding="10,6" LostFocus="Paths_LostFocus"/>
+                        <Button Grid.Column="2" Content="Browse…" Style="{StaticResource GlassBtn}" Click="BrowseAzimuth_Click"/>
+                    </Grid>
+                    <TextBlock Text="Game folder (contains Mount\media)" Style="{StaticResource CaptionTxt}"/>
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="GameOk" FontSize="14" FontWeight="Bold" VerticalAlignment="Center" Width="20"/>
+                        <TextBox x:Name="GameBox" Grid.Column="1" Style="{StaticResource GlassTextBox}" FontSize="12" Padding="10,6" LostFocus="Paths_LostFocus"/>
+                        <Button Grid.Column="2" Content="Browse…" Style="{StaticResource GlassBtn}" Click="BrowseGame_Click"/>
+                    </Grid>
+                    <CheckBox x:Name="AutoInjectCheck" Content="Load mods automatically when Azimuth starts (recommended - needed for anti-aliasing)"
+                              Checked="AutoInject_Changed" Unchecked="AutoInject_Changed"/>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

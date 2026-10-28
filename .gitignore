@@ -1,0 +1,52 @@
+# ── Build output ─────────────────────────────────────────────
+FH2ModStudio/bin/
+FH2ModStudio/obj/
+dist/
+*.user
+.vs/
+
+# Native DLL build output (dll/build.ps1 copies the result to ..\fh2sql.dll)
+fh2sql.dll
+fh2sql.prev.dll
+dll/*.dll
+dll/*.obj
+dll/*.exp
+dll/*.lib
+
+# ── Python ───────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+
+# ── Third-party binaries (shipped in GitHub Releases, not in the source) ──
+Forza Horizon 2 Convertor/ForzaToolsCli.exe
+Forza Horizon 2 Convertor/ForzaToolsCli-linux
+*.exe
+*.zip
+research/fmnext_cli/
+
+# ── Game files: never commit anything from Forza Horizon 2 / 3 ──
+*.slt
+*.slt-journal
+*.bank
+*.modelbin
+*.materialbin
+*.swatchbin
+*.carbin
+*.str
+*.dmp
+
+# ── Porter: working folder and per-install state ─────────────
+fh3port/work/
+fh3port/fh3port.ini
+fh3port/PORTED_CARS.md
+fh3port/FH3_ONLY_CARS.md
+fh3port/fh3only.json
+fh3port/failed_cars.json
+
+# ── FH2 Mod Studio: per-user settings and logs ───────────────
+FH2ModStudio.settings.json
+fh2sql.ini
+fh2sql_fs.log
+fh2sql_fslog.enable
+prerequisites.ok
+*.log
