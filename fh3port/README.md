@@ -644,3 +644,29 @@ Paths inside the scripts point at the session scratchpad; adjust before reuse.
 - **Tuning ranges**: `PhysicsSettings.ini` `[CarTuning]` keys are bound to floats of the physics settings object
   (pointer `0x14365D6E8`, `TuneFinalDriveRatioMin` +608 ... `TuneGasTankFillMax` +728, `sub_14104E390`). FH2 Mod Studio
   "Drift setup & tuning ranges…" edits the file (original kept as `.orig`) and, in game, the live floats.
+
+## 15. Material conversion, texture swaps, make-logo shape (2026-10-28)
+
+- **White / grey / tan interiors** (Zonda R, Centenario, Zenvo ST1, Focus RS RX, V12 Zagato ...): for FH3-only shaders the
+  converter picks an FH2 shader by name score and keeps FH3's parameters. Leather and plastic (`int_ch2_simplenormalao_glossvar`)
+  landed on FH2's *metal* shader `int_m_ch2normglossalphaemissive` without their colour; suede (`fabric_colorlookup`) on
+  `int_ch2normglossch1maskdiffuse`, which takes its colour from a texture (tan dash); matmap's "same name" FH2 materials
+  carry FH2's colours (`leather_lgl` light grey 0.64 where FH3 is black 0.007).
+- `research\fh3port\matlearn.py` pairs FH3 and FH2 library materials of the same name: FH3's interior shaders correspond
+  to FH2's `ch1/ch2diffnormglossalpha` family (`int_` variant inside), metals to FH2's `m_` shaders; parameter values
+  show the renames (ColorColorParam -> DiffuseColorA/B or DiffuseColorGroup, Gloss -> GlossA/B, F0Vector4 -> F0a/F0b,
+  CH1/CH2 diffuse textures -> DiffuseATexture).
+- **`matconv.py`** (runs before matmap): every remapped material whose FH3 shader is in `FAMILY` gets that FH2 shader
+  (metal when FH3's reflectance >= 0.2 or MetalSwitchBool) and FH3's own values under FH2's names; unknown parameters
+  are dropped (shader defaults). matmap now only handles lights, glass, radiosity, badges. Sun strips
+  (`car_windsheildbanner`) -> `carpaint_standard` with `CH1DiffuseTextureSwitchBool` on. `paramexpand` renames the same
+  parameters in material instances (`_custom` materials: Zenvo seat fabric comes as instance `CH2DiffuseTexture`).
+- **Texture swaps**: where FH2 lacks a texture the converter substitutes a similar name (`defaultch1_nrml` -> `eye_nrml`,
+  `gascap_018` -> `gascap_001`, `mask_default` -> `led_001_mask`; 125 on the Zonda R). `matconv` restores FH3's texture
+  when FH2 can load it: cars\_library (copied by `missing_library_textures`), car files, and global `media\_library`
+  textures FH2's own materials use (packed, not on disk - the converter can't see them). FH3-only global textures are
+  renamed copies with the same GUID (`ch1_normao_diffopac_nrml_34b98759...` = FH2 `defaultch1_nrml_34b98759...`) and
+  resolve to FH2's file. Zonda R: 87 restored.
+- **Make logos stretched** (BAC, Alumi Craft): FH2's UI draws a logo over a fixed box - all FH2 logos are 440x376 (L_) or
+  220x184. FH3's large logos have their own shape (BAC 400x72). `logos.fit` pads them with transparent BC7 blocks to
+  FH2's aspect ratio (no re-encoding); every port run repairs installed ones, `fh3port.py fix-logos` does it alone.

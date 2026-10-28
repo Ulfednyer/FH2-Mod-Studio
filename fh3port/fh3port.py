@@ -6,6 +6,7 @@ fh3port - port Forza Horizon 3 cars into Forza Horizon 2 (Mount folder).
     py fh3port.py port <MediaName>...  port the given cars (or "all"); add --keep-plates to keep the licence plates
                                        (FH2 has no plate text, so they show zeros; hidden by default)
     py fh3port.py names [MediaName...] write the ported cars' names into every language's string table (all if none)
+    py fh3port.py fix-logos            pad installed FH3 make logos to FH2's logo shape (they showed stretched)
     py fh3port.py restore              put every backed-up file back and delete every file this tool created
     py fh3port.py status               show the journal (what was ported, backed up, created)
 
@@ -21,6 +22,7 @@ import geom
 import carbin
 import tex
 import mncl
+import matconv
 import matmap
 import lightparams
 import slod
@@ -464,6 +466,14 @@ def convert_zip(src_zip, car_name, out_zip, keep_plates=False, new_car_id=None):
         # replace them with real FH2 library materials
         report = os.path.join(WORK, "reports", car_name, "fix_report.md")
         remaps = matmap.remaps_from_report(open(report, encoding="utf-8").read()) if os.path.exists(report) else []
+        # FH3 interior/trim shaders -> the FH2 shader FH2's own copies of those materials use, with FH3's values
+        # (white/grey interiors otherwise); also undoes the converter's swaps of textures FH2 lacks
+        log, converted = matconv.fix_zip(out_zip, tmp, src_zip, os.path.join(converter_fh3_lib(), "Materials.zip"), FH2_SHADERS,
+                                         [os.path.join(FH2_LIB, "Materials.zip"),
+                                          os.path.join(os.path.dirname(FH2_SHADERS), "Materials.zip")], remaps)
+        os.replace(tmp, out_zip)
+        out += "\nmatconv:\n   " + "\n   ".join(log)
+        remaps = [r for r in remaps if r[0].lower() not in converted]
         if remaps:
             log = matmap.apply(out_zip, tmp, remaps, matmap.Library(os.path.join(FH2_LIB, "Materials.zip")))
             os.replace(tmp, out_zip)
@@ -594,6 +604,26 @@ def append_to_zip(j, zip_path, files):
     else:
         write_native_zip(zip_path, [_entry_from_bytes(n, b) for n, b in files.items()])
     manifest_set(j, zip_path)
+
+
+def replace_in_zip(j, zip_path, files):
+    """Replaces (or adds) entries of one of our zips; the whole zip is rewritten in FH2's layout."""
+    touch(j, zip_path)
+    entries = [e for e in _raw_entries(zip_path) if e[0].lower() not in {n.lower() for n in files}]
+    write_native_zip(zip_path, entries + [_entry_from_bytes(n, b) for n, b in files.items()])
+    manifest_set(j, zip_path)
+
+
+def fix_installed_logos(j):
+    """Logos already in RCFH3.zip that still have FH3's shape -> padded to FH2's (logos.fit). Returns the count."""
+    if not os.path.exists(THUMB_ZIP):
+        return 0
+    with zipfile.ZipFile(THUMB_ZIP) as z:
+        have = {n: z.read(n) for n in z.namelist() if "manu_logo_" in n.lower()}
+    fixed = {n: b for n, b in logos.fit_files(have).items() if b is not have[n]}
+    if fixed:
+        replace_in_zip(j, THUMB_ZIP, fixed)
+    return len(fixed)
 
 
 def install_zip(j, src, dest):
@@ -1394,7 +1424,10 @@ def port(names, keep_plates=False):
     if rows:
         porter.log.append("manufacturer logos added for %d makes" % len(rows))
     if thumbs:
-        append_to_zip(j, THUMB_ZIP, downgrade_files(thumbs))
+        append_to_zip(j, THUMB_ZIP, logos.fit_files(downgrade_files(thumbs)))
+    n = fix_installed_logos(j)
+    if n:
+        porter.log.append("manufacturer logos padded to FH2's shape: %d" % n)
     if lib_missing:
         found = {}
         for p in sorted({m.lower() for m in lib_missing}):
@@ -1592,6 +1625,13 @@ def main():
         port(use_zips([a for a in args if not a.startswith("--")]), keep_plates="--keep-plates" in args)
     elif cmd == "names":
         names_command(sys.argv[2:])
+    elif cmd == "fix-logos":
+        from batch_port import azimuth_running
+        if azimuth_running():
+            sys.exit("close Forza Horizon 2 first")
+        j = journal()
+        print("logos padded to FH2's shape: %d" % fix_installed_logos(j))
+        save_journal(j)
     elif cmd == "upgrade-strings":
         from batch_port import azimuth_running
         if azimuth_running():

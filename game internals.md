@@ -133,6 +133,15 @@ length** (a stale second size made the game read truncated layouts and crash D3D
 - Light functions: ids are identical in FH2 and FH3 (70 = Null). Lamp units need the full vertex layout, not AO.
 - FH3-only shaders the porter remaps: `carpaint_standard_glossmask` → `carpaint_standard` with
   `CH1DiffuseTextureSwitchBool` (hash `0x7169AC81`) = 1. Still unmapped: `cf_outlinech1` (Corvette Z06 HE).
+- **FH3 → FH2 shader families** (learned from library materials both games ship under the same name): FH3's interior
+  shaders (`int_ch2_simplenormalao_glossvar`, `fabric_colorlookup`, `int_simplediffuse`, `int_ch1_normdiffuseopacity`,
+  `int_ch1_dualsurface_diffuse`, …) are FH2's `ch1/ch2diffnormglossalpha` (`int_` variant for interiors); FH3 marks
+  metal by reflectance / `MetalSwitchBool`, FH2 by separate `m_` shaders. Renames: `ColorColorParam` →
+  `DiffuseColorA/B` (ch2) or `DiffuseColorGroup` (ch1), `Gloss_floatVal` → `GlossA/B`, `F0Vector4` → `F0a/F0b`,
+  `CH1/CH2DiffuseTexture` → `DiffuseATexture`. A shader ignores names it doesn't know and uses its defaults (white).
+- **Textures:** the global `media\_library\textures` is packed in FH2 (not on disk); FH2's own materials show which
+  files exist. FH3 renamed several of them but kept the GUID suffix (`ch1_normao_diffopac_nrml_34b98759…` = FH2
+  `defaultch1_nrml_34b98759…`).
 
 ## 7. Paint: manufacturer colours and paint groups
 
@@ -223,7 +232,9 @@ length** (a stale second size made the game read truncated layouts and crash D3D
   `Thumbnail_<id>_Big/_Small.swatchbin` (+ `B_<id>`) in that RC zip. FH3's path often names no RC zip or another id – the
   porter searches every RC zip and stores ported thumbnails in `stripped\RCFH3.zip`.
 - Make logos: `List_CarMake.IconPath` / `IconPathLarge` (`Manu_Logo_<code>`, `L_Manu_Logo_<code>`). FH2's own rows for
-  makes it never shipped (Holden, Chrysler, …) point at files that don't exist.
+  makes it never shipped (Holden, Chrysler, …) point at files that don't exist. The UI stretches every logo over a
+  fixed box: FH2's are all 440×376 (large) and 220×184 (small); FH3's large logos have their own shape and must be
+  padded to that aspect ratio.
 - FH3 car classes: `CarClasses` 0 D … 5 S2, 6 R, 7 X.
 
 ## 12. Graphics and render settings

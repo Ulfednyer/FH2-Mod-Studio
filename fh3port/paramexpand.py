@@ -33,6 +33,21 @@ GROUPS = {
     0x938926B0: [[0x7B6BB8A5, 0xF5E4BF46], [0x1F9B6488, 0x9114636B]],                  # F0Vector4
 }
 
+# 1:1 renames for FH3 shaders matconv moves onto FH2's ch1/ch2diffnormglossalpha family: "_custom" materials get
+# their textures and tiling from material instances (Zenvo ST1 seat leather: CH2DiffuseTexture per instance)
+_RENAMES = {
+    "CH2DiffuseTexture": ["DiffuseATexture"], "CH2DiffuseTextureTexture": ["DiffuseATexture"],
+    "CH1DiffuseTextureTexture": ["DiffuseATexture"], "CH2NormalTexture": ["NormalTexture"],
+    "CH2NormalTiling": ["NormalTiling"], "CH2NormalHeightScale": ["NormalHeightScale"],
+    "DiffuseTextureSwitchBool": ["CH1DiffuseTextureSwitchBool"],
+    "ReflectionTintColorColorParam": ["ReflectionTintColorParam"],
+}
+for _src, _dst in _RENAMES.items():
+    for _h in (h for h, n in lightparams.NAMES.items() if n == _src):
+        GROUPS.setdefault(_h, [[h] for n in _dst for h, m in lightparams.NAMES.items() if m == n])
+# int_ch2_norm_diffuse's unnamed Vector2 next to CH2NormalTiling: the diffuse texture's tiling
+GROUPS.setdefault(0x54969DE6, [[h] for h, m in lightparams.NAMES.items() if m == "DiffuseATiling"])
+
 
 def _targets(src, shader, present):
     for alt in GROUPS[src]:
