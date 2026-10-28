@@ -41,6 +41,7 @@ import physdef
 import logos
 import fh3lib
 import paramexpand
+import ziputil
 import strtables
 import prepatch
 import dlc_synth
@@ -430,6 +431,18 @@ def run_cli(args):
 
 
 def convert_zip(src_zip, car_name, out_zip, keep_plates=False, new_car_id=None):
+    # the stages below write their zips uncompressed; the result is compressed once (ziputil)
+    ziputil.FAST = True
+    try:
+        rc, out, missing = _convert_zip(src_zip, car_name, out_zip, keep_plates, new_car_id)
+    finally:
+        ziputil.FAST = False
+    if rc == 0 and os.path.exists(out_zip):
+        ziputil.finish(out_zip)
+    return rc, out, missing
+
+
+def _convert_zip(src_zip, car_name, out_zip, keep_plates, new_car_id):
     if new_car_id is None:
         new_car_id = ID_REMAP.get(car_name.lower())
     prep_zip = out_zip + ".prep.zip"

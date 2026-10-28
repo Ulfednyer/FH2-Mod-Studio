@@ -18,6 +18,7 @@ Usage: py tex.py check <zip>...     report what would change
 import struct
 import sys
 import zipfile
+import ziputil
 
 BC_DXGI = set(range(70, 85)) | set(range(94, 100))
 # FH2's format table (dword_142E7F304 / ..308): format id -> (DXGI, DXGI sRGB)
@@ -100,7 +101,7 @@ def fix_bytes(d):
 
 def fix_zip(src, dst):
     changed = 0
-    with zipfile.ZipFile(src) as zin, zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zout:
+    with zipfile.ZipFile(src) as zin, ziputil.writer(dst) as zout:
         for info in zin.infolist():
             data = zin.read(info)
             if info.filename.lower().endswith(".swatchbin"):

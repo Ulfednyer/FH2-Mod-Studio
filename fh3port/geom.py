@@ -18,6 +18,7 @@ copy of tire_c (same model in both games):
 """
 import struct, sys, zipfile
 import numpy as np
+import ziputil
 
 DXGI_SIZE = {6: 12, 10: 8, 13: 8, 24: 4, 28: 4, 35: 4, 37: 4, 2: 16, 16: 8, 34: 4, 41: 4, 42: 4}
 CONVERT = {"POSITION": (13, 49, 6, 3), "NORMAL": (37, 52, 10, 9), "TANGENT": (24, 48, 10, 9)}  # fh3 dxgi, code -> fh2 dxgi, code
@@ -372,7 +373,7 @@ def convert_model(d):
 
 def fix_zip(src, dst):
     changed = 0
-    with zipfile.ZipFile(src) as zin, zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zout:
+    with zipfile.ZipFile(src) as zin, ziputil.writer(dst) as zout:
         for info in zin.infolist():
             data = zin.read(info)
             if info.filename.lower().endswith(".modelbin"):

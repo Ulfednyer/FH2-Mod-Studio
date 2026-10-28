@@ -23,6 +23,7 @@ Usage: py physdef.py check <car.zip|physicsdefinition.bin> ...   (OVER = would c
 import struct
 import sys
 import zipfile
+import ziputil
 
 ARENA = 0x1000
 LIMIT = 4048            # largest need among FH2's own cars (FIA_595SS_68), known to load
@@ -144,7 +145,7 @@ def shrink(d):
 
 def fix_zip(src, dst):
     log = []
-    with zipfile.ZipFile(src) as zin, zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zout:
+    with zipfile.ZipFile(src) as zin, ziputil.writer(dst) as zout:
         for info in zin.infolist():
             data = zin.read(info)
             if info.filename.lower() == NAME:

@@ -696,3 +696,15 @@ know (levels added as copies) the models of the nearest known level - otherwise 
 Gallardo's level-1 wing copy). Always rebuilt from the saved original `.carbin` (`FH3Port_Backupodyparts`), the zip is
 backed up through the journal; FH2 must be closed. `list` / `apply` / `restore` / `make` - see the script's docstring.
 
+## 17. Conversion speed (2026-10-28)
+
+Profiled with cProfile on a dry conversion (LAM_Bellissima_17: 25.7 s): 40% was zlib - each of the ~18 stages wrote a
+complete deflated zip, re-compressing every texture each time; 28% zfight's neighbour search (10,088 small calls,
+mostly Python overhead of a 27-cell loop); 12% the converter exe.
+- `ziputil.py`: inside `convert_zip` the stages write stored zips, the result is deflated once (`ziputil.FAST`;
+  standalone tools still write deflated zips).
+- `zfight._near`: all 27 neighbour cells in one `searchsorted` (exact same result; the lexsort fixes the order).
+- `batch_port.py`: the per-car checks (3 Python processes + a zip scan each) run in parallel like the conversions.
+Result: Bellissima 25.7 s -> 9.5 s, NSX 21.6 s -> 7.3 s, all entries byte-identical (except aofix's white AO
+texture, which gets a random GUID every run); checks 27.8 s -> 5.8 s for 32 cars.
+

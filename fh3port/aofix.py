@@ -17,6 +17,7 @@ import zipfile
 import bundle
 import carbin
 import tex
+import ziputil
 
 WHITE_NAME = "Textures/ao/fh2port_white_ao.swatchbin"
 SKIP = ("bulbs", "glass", "lens", "interior_a", "__slod")
@@ -61,7 +62,7 @@ def fix_zip(src, dst, car_name):
                     templates.append((len(d), n))
         if not cb_name or not templates:
             log.append("no carbin or no BC4 AO template - skipped")
-            with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zout:
+            with ziputil.writer(dst) as zout:
                 for info in zin.infolist():
                     zout.writestr(info.filename, zin.read(info))
             return log
@@ -76,7 +77,7 @@ def fix_zip(src, dst, car_name):
                 continue
             changes[off] = white_path
             log.append("%s: empty AO -> white" % m)
-        with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zout:
+        with ziputil.writer(dst) as zout:
             for info in zin.infolist():
                 data = zin.read(info)
                 if info.filename == cb_name and changes:

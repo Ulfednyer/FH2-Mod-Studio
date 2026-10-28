@@ -16,6 +16,7 @@ import zipfile
 import numpy as np
 
 import geom
+import ziputil
 
 NEAR = 0.0003     # 0.3 mm
 SHARE = 0.5
@@ -52,6 +53,8 @@ def _mesh_geometry(ents, e, bufs, ibs):
 REACH = 0.02          # a triangle counts only if the nearest centroid of the other mesh is this close
 CELL = REACH * 1.01  # grid cell >= REACH: any centroid within REACH lies in one of the 27 neighbouring cells
 OFFSETS = np.array([(x, y, z) for x in (-1, 0, 1) for y in (-1, 0, 1) for z in (-1, 0, 1)], np.int64)
+# _key(c + offset) == _key(c) + DELTA[offset]: each field has 21 bits and cells never reach the field limits
+DELTA = OFFSETS[:, 0] * (1 << 42) + OFFSETS[:, 1] * (1 << 21) + OFFSETS[:, 2]
 
 
 def _cells(pts):
@@ -77,24 +80,16 @@ def _near(ca, other, tol):
     rows = np.nonzero(inside)[0]
     if not len(rows):
         return 0, mask, k_all
-    pc = _cells(ca[rows])
-    pid, cid = [], []
-    for off in OFFSETS:
-        kk = _key(pc + off)
-        a = np.searchsorted(skeys, kk, "left")
-        b = np.searchsorted(skeys, kk, "right")
-        cnt = b - a
-        tot = int(cnt.sum())
-        if not tot:
-            continue
-        rep = np.repeat(np.arange(len(rows)), cnt)
-        start = np.repeat(a - np.concatenate(([0], np.cumsum(cnt)[:-1])), cnt)
-        pid.append(rep)
-        cid.append(order[start + np.arange(tot)])
-    if not pid:
+    # all 27 neighbour cells of every point in one search (was a Python loop of 27 x 2 searches per call: most of
+    # the stage's time went to call overhead on small arrays); candidate order differs, the lexsort below fixes it
+    kk = (_key(_cells(ca[rows]))[:, None] + DELTA[None, :]).ravel()
+    a = np.searchsorted(skeys, kk, "left")
+    cnt = np.searchsorted(skeys, kk, "right") - a
+    tot = int(cnt.sum())
+    if not tot:
         return 0, mask, k_all
-    pid = np.concatenate(pid)
-    cid = np.concatenate(cid)
+    pid = np.repeat(np.arange(len(kk)) // len(DELTA), cnt)
+    cid = order[np.repeat(a - (np.cumsum(cnt) - cnt), cnt) + np.arange(tot)]
     p = ca[rows][pid]
     d2 = ((cg[cid] - p) ** 2).sum(1)
     srt = np.lexsort((cid, d2, pid))          # per point: smallest distance, then lowest index (np.argmin rule)
@@ -334,7 +329,7 @@ def fix_model(d, siblings=()):
 
 def fix_zip(src, dst):
     log = []
-    with zipfile.ZipFile(src) as zin, zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zout:
+    with zipfile.ZipFile(src) as zin, ziputil.writer(dst) as zout:
         # opaque geometry per part folder, for models whose decals lie on a sibling model
         folders = {}
         for n in zin.namelist():

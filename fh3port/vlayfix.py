@@ -24,6 +24,7 @@ import zipfile
 import numpy as np
 
 import bundle
+import ziputil
 
 SEM_ORDER = {"POSITION": 0, "NORMAL": 1, "TEXCOORD": 2, "TANGENT": 3}
 FH2_TEX = (35, 46, 4)      # dxgi R16G16_UNORM, Forza code, bytes
@@ -397,7 +398,7 @@ def update_modl_counts(blobs):
 
 def fix_zip(src, dst, variants_of_material):
     log = []
-    with zipfile.ZipFile(src) as zin, zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zout:
+    with zipfile.ZipFile(src) as zin, ziputil.writer(dst) as zout:
         for info in zin.infolist():
             data = zin.read(info)
             if info.filename.lower().endswith(".modelbin"):

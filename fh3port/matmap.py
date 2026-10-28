@@ -13,6 +13,7 @@ Choice per remapped material:
 """
 import re
 import zipfile
+import ziputil
 
 KEEP_SCORE = 0.7
 
@@ -96,7 +97,7 @@ def apply(src_zip, dst_zip, remaps, library):
         else:
             log.append("%s (%s -> %s) %s" % (rel, a, b, why))
     done = set()
-    with zipfile.ZipFile(src_zip) as zin, zipfile.ZipFile(dst_zip, "w", zipfile.ZIP_DEFLATED) as zout:
+    with zipfile.ZipFile(src_zip) as zin, ziputil.writer(dst_zip) as zout:
         for info in zin.infolist():
             data = zin.read(info)
             key = info.filename.lower()

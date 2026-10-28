@@ -24,6 +24,7 @@ Usage: py carbin.py check <file.carbin|zip>...      parse (FH2 rules + FH3 model
 import struct
 import sys
 import zipfile
+import ziputil
 
 FH2_MODEL_MAX = 0x0F
 
@@ -358,7 +359,7 @@ def fix_zip(src, dst, car_name=None, lib_materials=None, new_car_id=None):
     if lib_materials:
         with zipfile.ZipFile(lib_materials) as lz:
             lib_names = {n.lower() for n in lz.namelist()}
-    with zipfile.ZipFile(src) as zin, zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zout:
+    with zipfile.ZipFile(src) as zin, ziputil.writer(dst) as zout:
         car_names = {n.lower() for n in zin.namelist()}
         for info in zin.infolist():
             data = zin.read(info)

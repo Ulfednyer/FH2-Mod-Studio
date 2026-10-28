@@ -17,6 +17,7 @@ import struct
 import zipfile
 
 import fh3lib
+import ziputil
 
 # car-local paint folders the manufacturer colour list points into (SUB_BRATHE_81 keeps its paints in carliveries/)
 PAINT_DIRS = ("materials/carcolors/", "materials/carliveries/")
@@ -268,7 +269,7 @@ def prepare_zip(src_zip, car_name, dst_zip, fh3_lib, fh3_root):
                             # shipped nowhere (FH3's own Regalia blackredflake carbonfiber_011_diff/_rtint)
                             MISSING_TEXTURES.setdefault(info.filename, []).append(m.group(1).decode("latin1"))
 
-    with zipfile.ZipFile(src_zip) as zin, zipfile.ZipFile(dst_zip, "w", zipfile.ZIP_DEFLATED) as zout:
+    with zipfile.ZipFile(src_zip) as zin, ziputil.writer(dst_zip) as zout:
         for info in zin.infolist():
             fn = info.filename.lower()
             # Strip car-local custom shaders/materials that cannot convert to FH2

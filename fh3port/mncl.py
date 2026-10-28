@@ -14,6 +14,7 @@ import zipfile
 
 import fh3lib
 import geom
+import ziputil
 
 
 def _str7_end(b, p):
@@ -239,7 +240,7 @@ def fix_zip(src, dst, car_name=None, fh2_lib=None, fh3_lib=None):
         lib2 = {n.lower() for n in zipfile.ZipFile(fh2_lib).namelist()}
         z3 = fh3lib.LayeredZip(fh3_lib)     # Materials.zip + Materials_pri_44/45.zip
         lib3 = {n.lower(): n for n in z3.namelist()}
-    with zipfile.ZipFile(src) as zin, zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zout:
+    with zipfile.ZipFile(src) as zin, ziputil.writer(dst) as zout:
         added = {}
         # paints the colour list points at inside the car zip (any of them may use an FH3-only shader)
         paint_paths = set()

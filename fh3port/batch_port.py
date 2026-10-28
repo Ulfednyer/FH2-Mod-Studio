@@ -165,6 +165,27 @@ def check_car(media, bad_zips, db):
     return problems
 
 
+def _check_job(args):
+    """check_car in a worker process (its own read-only database connection)."""
+    media, bad_zips = args
+    db = sqlite3.connect("file:" + P.FH2_DB + "?mode=ro", uri=True)
+    try:
+        return check_car(media, bad_zips, db)
+    finally:
+        db.close()
+
+
+def check_cars_parallel(cars, bad_zips):
+    """{car: problems} - the checks start 3 Python processes and read the whole zip per car; one car after another
+    they took ~4 of the 18 minutes of a 287-car run, so they run side by side like the conversions."""
+    workers = min(P.CONVERT_WORKERS, len(cars))
+    if workers <= 1:
+        return {m: _check_job((m, bad_zips)) for m in cars}
+    from concurrent.futures import ProcessPoolExecutor
+    with ProcessPoolExecutor(workers) as ex:
+        return dict(zip(cars, ex.map(_check_job, [(m, bad_zips) for m in cars])))
+
+
 def donors(cars):
     """Engine-sound source per car, read from the database: the MediaName of each of its engines."""
     db = sqlite3.connect("file:" + P.FH2_DB + "?mode=ro", uri=True)
@@ -228,14 +249,12 @@ def port_cars(n, cars, keep_plates=False):
             failed[m] = "%s: %s" % (info.get("status", "not ported"), info.get("reason", "see work\\batch_%s_port.log" % n))
         bad = {}
         bad_zips, other = verify_all(n)
-        db = sqlite3.connect("file:" + P.FH2_DB + "?mode=ro", uri=True)
-        for m in attempt:
-            if m in conv_failed:
-                continue
-            p = check_car(m, bad_zips, db)
+        checked = check_cars_parallel([m for m in attempt if m not in conv_failed], bad_zips)
+        for m, p in checked.items():
             print("   %-32s %s" % (m, "ok" if not p else "; ".join(p)), flush=True)
             if p:
                 bad[m] = "; ".join(p)
+        db = sqlite3.connect("file:" + P.FH2_DB + "?mode=ro", uri=True)
         integrity = db.execute("PRAGMA integrity_check").fetchone()[0]
         db.close()
         car_zips = {os.path.normpath(os.path.join(P.FH2, "cars", m + ".zip")).lower() for m in attempt}
@@ -360,8 +379,9 @@ def check_cars(cars):
     db = sqlite3.connect("file:" + P.FH2_DB + "?mode=ro", uri=True)
     porter = P.Porter(P.journal(), P.FH2_DB)
     res = {}
+    model_checks = check_cars_parallel(list(cars), bad_zips)
     for m in cars:
-        p = check_car(m, bad_zips, db)
+        p = list(model_checks[m])
         row = db.execute("SELECT Id FROM Data_Car WHERE MediaName = ? COLLATE NOCASE", (m,)).fetchone()
         if row:
             v = dbcheck.Validator(porter)

@@ -38,6 +38,7 @@ RENAME_H = [
 import json
 import os
 import re
+import ziputil
 
 # Generic renames: FH3 often names a parameter with a type suffix where FH2 doesn't (or the other way round), e.g.
 # reflectance `F0aVector4`/`F0bVector4` (FH3) vs `F0a`/`F0b` (FH2 ch1/ch2diffnormglossalphaemissive) - without it
@@ -189,7 +190,7 @@ def fix_zip(src, dst, car_name, materials_zip, shaders_zip):
     with zipfile.ZipFile(src) as zin:
         names = {n.lower(): n for n in zin.namelist()}
         res = Resolver(names, zin.read, car_name, materials_zip, shaders_zip)
-        with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zout:
+        with ziputil.writer(dst) as zout:
             for info in zin.infolist():
                 data = zin.read(info)
                 low = info.filename.lower()

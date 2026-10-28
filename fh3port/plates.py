@@ -11,6 +11,7 @@ import sys
 import zipfile
 
 import geom
+import ziputil
 
 PLATE = re.compile(r"(?i)(^|/)f?plate(us|eu|uk|jp|manu)_[a-z0-9]+\.modelbin$")
 
@@ -33,7 +34,7 @@ def hide_model(d):
 
 def fix_zip(src, dst):
     log = []
-    with zipfile.ZipFile(src) as zin, zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zout:
+    with zipfile.ZipFile(src) as zin, ziputil.writer(dst) as zout:
         for info in zin.infolist():
             data = zin.read(info)
             if is_plate(info.filename):

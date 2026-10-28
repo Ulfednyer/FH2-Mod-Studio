@@ -23,6 +23,7 @@ import zipfile
 
 import carbin
 import geom
+import ziputil
 
 # Radiosity meshes turned out to be the lamp reflectors themselves (black lamps when hidden); the flicker was coplanar
 # LED/glass and LED/LED layers, handled by zfight.py. matmap now gives them FH2 chrome/plastic/glass instead.
@@ -96,7 +97,7 @@ def fix_zip(src, dst, car_name):
         masks = {}
         for n, pr in todo.items():
             masks[("game:\\media\\cars\\%s\\%s" % (car_name, n.replace("/", "\\"))).lower()] = pr[0]
-        with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zout:
+        with ziputil.writer(dst) as zout:
             for info in zin.infolist():
                 data = zin.read(info)
                 low = info.filename.lower()

@@ -25,6 +25,7 @@ import bundle
 import carbin
 import lightparams
 import mtpr
+import ziputil
 
 # FH3 hash -> alternatives, best first; each alternative is the list of FH2 hashes that together replace it
 GROUPS = {
@@ -177,7 +178,7 @@ def fix_zip(src, dst, car_name, materials_zip, shaders_zip, fh3_materials_zip):
                     return res.shader_bytes(sp)
             return None
 
-        with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zout:
+        with ziputil.writer(dst) as zout:
             for info in zin.infolist():
                 data = zin.read(info)
                 low = info.filename.lower()

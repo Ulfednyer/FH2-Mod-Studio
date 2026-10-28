@@ -28,6 +28,7 @@ import zipfile
 import bundle
 import mtpr
 from lightparams import NAMES, _s7, generic_target
+import ziputil
 
 LIB_TEX = "game:\\media\\cars\\_library\\textures\\"
 GLOBAL_TEX = "game:\\media\\_library\\"
@@ -392,7 +393,7 @@ def fix_zip(src, dst, fh3_car_zip, fh3_materials_zip, shaders_zip, fh2_materials
 
     remapped = {("materials/" + r).lower(): (r, a) for r, a, _, _ in remaps}
     log, converted, swapped = [], set(), 0
-    with zipfile.ZipFile(src) as zin, zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zout:
+    with zipfile.ZipFile(src) as zin, ziputil.writer(dst) as zout:
         car_files = {n.lower() for n in zin.namelist()}
         resolve = lambda path: resolve_texture(path, car_files, fh2_global, lib_ok)
         for info in zin.infolist():

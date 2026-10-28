@@ -10,6 +10,7 @@ drop parameters FH2 cannot read.
 """
 import os, struct, sys, zipfile
 from collections import Counter
+import ziputil
 
 NAMES = {0: "Vector", 1: "Color", 2: "Float", 3: "Bool", 4: "Int", 5: "Swizzle", 6: "Texture2D", 7: "Sampler",
          8: "ColorGradient", 9: "FunctionRange", 11: "Vector2"}
@@ -240,7 +241,7 @@ def strict_check(data):
 def fix_zip(src, dst):
     """Copies a zip, rewriting every .modelbin/.materialbin that still holds FH3 parameters. Returns #files changed."""
     changed = 0
-    with zipfile.ZipFile(src) as zin, zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zout:
+    with zipfile.ZipFile(src) as zin, ziputil.writer(dst) as zout:
         for info in zin.infolist():
             data = zin.read(info)
             if info.filename.lower().endswith((".modelbin", ".materialbin")):
