@@ -22,6 +22,7 @@ APP = os.path.join(HERE, "FH2ModStudio", "bin", "Release", "net9.0-windows", "wi
 ROOT = "FH3toFH2_CarPort"
 
 APP_SKIP = ["FH2ModStudio.settings.json", "fh2sql.ini", "fh2sql_fs*.log", "fh2sql_fslog.enable", "prerequisites.ok",
+            "python.txt", "setup.log",
             "*.pdb", "*.log"]
 # researchh3port scripts the porter runs or imports (the rest are one-off investigations)
 RESEARCH_FILES = ["strict.py", "modlcounts.py", "superset.py", "vdclgroups.py", "matidump.py"]
@@ -51,8 +52,11 @@ Install
    (the folder that contains "Mount"), so you get <FH2>\\fh2sql\\FH2ModStudio, <FH2>\\fh2sql\\fh3port ...
 2. Start "fh2sql\\FH2ModStudio\\Start FH2 Mod Studio.cmd" (not the .exe). The first start checks and installs
    .NET 9 Desktop Runtime, Python and numpy (Windows may ask for permission once), then opens FH2 Mod Studio.
+   If it says "Setup failed", send fh2sql\\FH2ModStudio\\setup.log when asking for help.
 3. In the "Port FH3 cars" tab (sidebar, 5th icon; Ctrl+5):
-   - Forza Horizon 2 install location: your FH2 folder (found automatically if fh2sql is inside it)
+   - Forza Horizon 2 install location: found automatically (from Azimuth's settings or by searching). If not,
+     pick Azimuth's game folder - the one that contains "Mount", usually named Anthem_1.0.0.64_x64__8wekyb3d8bbwe.
+     Picking Mount itself or the folder above the game works too.
    - Forza Horizon 3 install location: Browse... to your FH3 folder (the one that contains "media")
    - FH3 update / DLC media: only if you keep FH3 update/DLC files in a separate media folder; otherwise leave it.
 

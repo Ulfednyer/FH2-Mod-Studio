@@ -16,6 +16,12 @@ ported car is logged in journal.json so "restore" can undo everything.
 import glob, json, os, re, shutil, sqlite3, struct, subprocess, sys, tempfile, zipfile
 from datetime import datetime
 
+try:
+    import numpy  # noqa: F401 - geom, vlayfix and zfight need it; without it every command (even "paths") failed
+except ImportError:
+    sys.exit("numpy is missing for this Python (%s). Install it: \"%s\" -m pip install numpy  - or start FH2 Mod Studio "
+             "with \"Start FH2 Mod Studio.cmd\", which installs it." % (sys.executable, sys.executable))
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import mtpr
 import geom
@@ -53,8 +59,9 @@ def _config():
     # game: configured path if exists, else ../..
     game = p.get("game")
     default_game = os.path.dirname(os.path.dirname(HERE))
-    if not game or not os.path.exists(game):
-        game = default_game
+    if not game or not os.path.isdir(os.path.join(game, "Mount")):
+        if not game or os.path.isdir(os.path.join(default_game, "Mount")):
+            game = default_game
 
     # fh3: the FH3 installation (holds media\); no default - set it in FH2 Mod Studio or fh3port.ini
     fh3 = p.get("fh3") or ""

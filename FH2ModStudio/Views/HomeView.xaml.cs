@@ -112,24 +112,46 @@ public partial class HomeView : UserControl
     private void RefreshPaths()
     {
         var s = _main.Settings;
-        Mark(AzimuthOk, File.Exists(s.AzimuthExe));
-        Mark(GameOk, Directory.Exists(s.MediaDir));
+        Mark(AzimuthOk, File.Exists(s.AzimuthExe), "azimuth.exe was not found there. Browse to azimuth.exe (the Azimuth launcher).");
+        Mark(GameOk, ModSettings.IsGameRoot(s.GameRoot),
+             "No Forza Horizon 2 there. Pick the folder that contains \"Mount\" (with media and forza_durango_release_final.exe inside) - " +
+             "usually named Anthem_1.0.0.64_x64__8wekyb3d8bbwe. Mount itself or a folder above it works too.");
     }
 
-    private static void Mark(TextBlock t, bool ok)
+    private static void Mark(TextBlock t, bool ok, string why)
     {
         t.Text = ok ? "✓" : "!";
         t.Foreground = ok ? DoneFg : new SolidColorBrush(Color.FromRgb(0xFF, 0x3B, 0x30));
-        t.ToolTip = ok ? "Found" : "Not found";
+        t.ToolTip = ok ? "Found" : why;
     }
 
     private void Paths_LostFocus(object sender, RoutedEventArgs e)
     {
-        _main.Settings.AzimuthExe = AzimuthBox.Text.Trim().Trim('"');
-        _main.Settings.GameRoot = GameBox.Text.Trim().Trim('"');
-        _main.Settings.Save();
+        var s = _main.Settings;
+        var azimuth = AzimuthBox.Text.Trim().Trim('"');
+        if (Directory.Exists(azimuth) && File.Exists(Path.Combine(azimuth, "azimuth.exe"))) azimuth = Path.Combine(azimuth, "azimuth.exe");
+        s.AzimuthExe = azimuth;
+        var typed = GameBox.Text.Trim().Trim('"');
+        s.GameRoot = ModSettings.NormalizeGameRoot(typed) ?? typed;
+        if (s.GameRoot.Length == 0 || (!ModSettings.IsGameRoot(s.GameRoot) && File.Exists(s.AzimuthExe)))
+            s.GameRoot = ModSettings.FindGameRoot(s.AzimuthExe) ?? s.GameRoot;   // Azimuth knows its game folder
+        AzimuthBox.Text = s.AzimuthExe;
+        GameBox.Text = s.GameRoot;
+        s.Save();
+        ShareGameWithPorter();
         RefreshPaths();
         OnStatus(_status);
+        if (typed.Length > 0 && !ModSettings.IsGameRoot(s.GameRoot))
+            _main.SetStatus($"No Forza Horizon 2 found in \"{typed}\". Pick the folder that contains Mount (Azimuth's game folder).");
+    }
+
+    /// <summary>The car porter keeps its own copy of the game folder (fh3port.ini); a valid one set here goes there too.</summary>
+    private void ShareGameWithPorter()
+    {
+        var s = _main.Settings;
+        if (!ModSettings.IsGameRoot(s.GameRoot)) return;
+        var porter = new CarPorter();
+        if (porter.Locate(s)) porter.SetPath("game", s.GameRoot);
     }
 
     private void BrowseAzimuth_Click(object sender, RoutedEventArgs e)
@@ -137,15 +159,12 @@ public partial class HomeView : UserControl
         var dlg = new OpenFileDialog { Filter = "Azimuth|azimuth.exe|Programs|*.exe", Title = "Locate azimuth.exe" };
         if (dlg.ShowDialog() != true) return;
         AzimuthBox.Text = dlg.FileName;
-        _main.Settings.AzimuthExe = dlg.FileName;
-        _main.Settings.AutoDetectPaths();
-        GameBox.Text = _main.Settings.GameRoot;
         Paths_LostFocus(sender, e);
     }
 
     private void BrowseGame_Click(object sender, RoutedEventArgs e)
     {
-        var dlg = new OpenFolderDialog { Title = "Select the Forza Horizon 2 folder (the one containing Mount)" };
+        var dlg = new OpenFolderDialog { Title = "Select the Forza Horizon 2 folder (the one containing Mount) - Mount itself works too" };
         if (dlg.ShowDialog() != true) return;
         GameBox.Text = dlg.FolderName;
         Paths_LostFocus(sender, e);

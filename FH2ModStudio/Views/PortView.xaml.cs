@@ -81,6 +81,26 @@ public partial class PortView : UserControl
         UpdateRunState();
         try
         {
+            // every porter command needs numpy; without it even the paths below came back empty ("not set")
+            var (pathsCode, pathsOut) = await _porter.CaptureAsync("fh3port.py", "paths");
+            if (pathsCode != 0 && CarPorter.NumpyMissing(pathsOut))
+            {
+                SetSetup(Grey, "Installing numpy for Python…", "The car porter needs the Python package numpy. This takes a minute.");
+                var err = await _porter.InstallNumpyAsync(_ => { });
+                if (err != null)
+                {
+                    SetSetup(Red, "numpy could not be installed",
+                        err + "\nClose FH2 Mod Studio, delete prerequisites.ok next to it and start \"Start FH2 Mod Studio.cmd\" again (it writes setup.log), " +
+                        "or run in a command prompt: py -m pip install numpy");
+                    return;
+                }
+                (pathsCode, pathsOut) = await _porter.CaptureAsync("fh3port.py", "paths");
+            }
+            // the game folder set on the Home page is the porter's too
+            var line = pathsOut.Split('\n').Select(l => l.Trim()).LastOrDefault(l => l.StartsWith("{"));
+            if (line != null && JsonDocument.Parse(line).RootElement.TryGetProperty("game_ok", out var gameOk) && !gameOk.GetBoolean()
+                && ModSettings.IsGameRoot(_main.Settings.GameRoot))
+                _porter.SetPath("game", _main.Settings.GameRoot);
             await ShowPathsAsync();
             var (code, output) = await _porter.CaptureAsync("fh3port.py", "setup");
             var lines = output.Split('\n').Select(l => l.TrimEnd()).Where(l => l.Length > 0).ToList();
@@ -162,7 +182,11 @@ public partial class PortView : UserControl
             // accept the media / Mount folder itself too
             var name = Path.GetFileName(chosen.TrimEnd('\\'));
             if (key == "fh3" && name.Equals("media", StringComparison.OrdinalIgnoreCase)) chosen = Path.GetDirectoryName(chosen.TrimEnd('\\'))!;
-            if (key == "game" && name.Equals("Mount", StringComparison.OrdinalIgnoreCase)) chosen = Path.GetDirectoryName(chosen.TrimEnd('\\'))!;
+            if (key == "game" && ModSettings.NormalizeGameRoot(chosen) is { } root)
+            {
+                chosen = root;   // Mount, media, the exe's folder or a folder above the game all lead here
+                if (!ModSettings.IsGameRoot(_main.Settings.GameRoot)) { _main.Settings.GameRoot = root; _main.Settings.Save(); }
+            }
             var probe = key == "game" ? Path.Combine(chosen, "Mount", "media", "stripped", "gamedbRC.slt")
                                       : Path.Combine(chosen, "media", "stripped", "gamedbRC.slt");
             if (!File.Exists(probe) && MessageBox.Show(

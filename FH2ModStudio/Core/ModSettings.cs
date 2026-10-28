@@ -76,43 +76,141 @@ public sealed class ModSettings
 
     public void Save() => File.WriteAllText(SettingsPath, JsonSerializer.Serialize(this, Json));
 
-    /// <summary>Finds azimuth.exe (running process or known locations) and reads the game folder from azimuth.ini.</summary>
+    /// <summary>Finds azimuth.exe and the game folder when the saved ones don't exist: the running Azimuth, its
+    /// azimuth.ini (folder= of each game), the folders around this app, then a shallow search of the usual places
+    /// (Downloads, Desktop, Documents, Games folders, drive roots). Nothing is assumed about folder names.</summary>
     public void AutoDetectPaths()
     {
-        if (!File.Exists(AzimuthExe))
+        if (NormalizeGameRoot(GameRoot) is { } g) GameRoot = g;
+        if (!File.Exists(AzimuthExe)) AzimuthExe = FindAzimuth(GameRoot) ?? AzimuthExe;
+        if (!IsGameRoot(GameRoot)) GameRoot = FindGameRoot(AzimuthExe) ?? GameRoot;
+        if (!File.Exists(AzimuthExe) && IsGameRoot(GameRoot)) AzimuthExe = FindAzimuth(GameRoot) ?? AzimuthExe;
+    }
+
+    /// <summary>The game folder = the one holding Mount\media (Azimuth's game folder, e.g. Anthem_1.0.0.64_x64__...).</summary>
+    public static bool IsGameRoot(string? dir) =>
+        !string.IsNullOrWhiteSpace(dir) && Directory.Exists(Path.Combine(dir, "Mount", "media"));
+
+    /// <summary>Whatever folder the user picked -> the game folder, or null: the game folder itself, anything inside it
+    /// (Mount, media, the exe), or a folder that holds the game folder one or two levels down.</summary>
+    public static string? NormalizeGameRoot(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return null;
+        path = path.Trim().Trim('"').TrimEnd('\\', '/');
+        if (path.Length == 2 && path[1] == ':') path += "\\";
+        try
         {
-            var running = GameProcess.FindProcess();
-            string? path = null;
-            try { path = running?.MainModule?.FileName; } catch { }
-            var candidates = new[]
+            if (File.Exists(path)) path = Path.GetDirectoryName(path)!;
+            if (!Directory.Exists(path)) return null;
+            for (var d = new DirectoryInfo(path); d != null; d = d.Parent)
+                if (IsGameRoot(d.FullName)) return d.FullName;
+            foreach (var sub in SubDirs(path))
             {
-                path,
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "amzimuth", "azimuth.exe"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "azimuth", "azimuth.exe"),
-            };
-            AzimuthExe = candidates.FirstOrDefault(File.Exists) ?? AzimuthExe;
-        }
-        if (!Directory.Exists(Path.Combine(GameRoot, "Mount")) && File.Exists(AzimuthExe))
-        {
-            var ini = Path.Combine(Path.GetDirectoryName(AzimuthExe)!, "data", "azimuth.ini");
-            if (File.Exists(ini))
-            {
-                var folder = File.ReadLines(ini).Select(l => l.Trim())
-                    .FirstOrDefault(l => l.StartsWith("folder=", StringComparison.OrdinalIgnoreCase) &&
-                                         Directory.Exists(Path.Combine(l[7..], "Mount")));
-                if (folder != null) GameRoot = folder[7..];
+                if (IsGameRoot(sub)) return sub;
+                foreach (var sub2 in SubDirs(sub))
+                    if (IsGameRoot(sub2)) return sub2;
             }
         }
-        if (!Directory.Exists(Path.Combine(GameRoot, "Mount")))
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { }
+        return null;
+    }
+
+    private static IEnumerable<string> SubDirs(string dir)
+    {
+        try { return Directory.EnumerateDirectories(dir).ToList(); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException) { return Array.Empty<string>(); }
+    }
+
+    /// <summary>Folders worth a shallow search, nearest first.</summary>
+    private static IEnumerable<string> SearchRoots(params string?[] near)
+    {
+        foreach (var n in near)
         {
-            // the tool usually lives in <game>\fh2sql\FH2ModStudio\...
-            var dir = new DirectoryInfo(AppDir);
-            while (dir != null && !Directory.Exists(Path.Combine(dir.FullName, "Mount"))) dir = dir.Parent;
-            if (dir != null) GameRoot = dir.FullName;
+            if (string.IsNullOrWhiteSpace(n)) continue;
+            DirectoryInfo? d;
+            try { d = new DirectoryInfo(File.Exists(n) ? Path.GetDirectoryName(n)! : n); } catch { continue; }
+            for (int i = 0; d != null && i < 4; d = d.Parent, i++) yield return d.FullName;
+        }
+        string Special(Environment.SpecialFolder f) => Environment.GetFolderPath(f);
+        var profile = Special(Environment.SpecialFolder.UserProfile);
+        yield return Path.Combine(profile, "Downloads");
+        yield return Special(Environment.SpecialFolder.DesktopDirectory);
+        yield return Special(Environment.SpecialFolder.MyDocuments);
+        yield return profile;
+        yield return Special(Environment.SpecialFolder.ProgramFiles);
+        yield return Special(Environment.SpecialFolder.ProgramFilesX86);
+        foreach (var drive in DriveInfo.GetDrives().Where(x => x.DriveType == DriveType.Fixed && x.IsReady))
+        {
+            foreach (var games in new[] { "Games", "XboxGames", "Program Files", "Emulators", "Emulation" })
+                yield return Path.Combine(drive.RootDirectory.FullName, games);
+            yield return drive.RootDirectory.FullName;
         }
     }
 
-    public bool PathsValid => File.Exists(AzimuthExe) && Directory.Exists(MediaDir);
+    /// <summary>Directories up to <paramref name="depth"/> levels below root (root included), skipping system folders.</summary>
+    private static IEnumerable<string> Walk(string root, int depth)
+    {
+        if (!Directory.Exists(root)) yield break;
+        yield return root;
+        if (depth == 0) yield break;
+        foreach (var sub in SubDirs(root))
+        {
+            var name = Path.GetFileName(sub);
+            if (name.StartsWith('$') || name.StartsWith('.') || name is "Windows" or "AppData" or "node_modules" or "System Volume Information") continue;
+            foreach (var d in Walk(sub, depth - 1)) yield return d;
+        }
+    }
+
+    public static string? FindAzimuth(string? gameRoot)
+    {
+        try
+        {
+            var running = GameProcess.FindProcess()?.MainModule?.FileName;
+            if (File.Exists(running)) return running;
+        }
+        catch { }
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var root in SearchRoots(gameRoot, AppDir))
+        {
+            if (!seen.Add(root)) continue;
+            foreach (var d in Walk(root, 2))
+            {
+                var exe = Path.Combine(d, "azimuth.exe");
+                if (File.Exists(exe)) return exe;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>Game folders Azimuth knows: folder= lines of data\azimuth.ini (UTF-16; one [title-...] section per game).</summary>
+    public static IEnumerable<string> AzimuthGameFolders(string? azimuthExe)
+    {
+        if (string.IsNullOrEmpty(azimuthExe)) yield break;
+        var dir = Path.GetDirectoryName(azimuthExe) ?? "";
+        foreach (var ini in new[] { Path.Combine(dir, "data", "azimuth.ini"), Path.Combine(dir, "azimuth.ini") })
+        {
+            List<string> lines;
+            try { lines = File.Exists(ini) ? File.ReadLines(ini).ToList() : new(); } catch (IOException) { continue; }
+            foreach (var l in lines.Select(x => x.Trim()))
+                if (l.StartsWith("folder=", StringComparison.OrdinalIgnoreCase) && l.Length > 7) yield return l[7..].Trim();
+        }
+    }
+
+    public static string? FindGameRoot(string? azimuthExe)
+    {
+        foreach (var f in AzimuthGameFolders(azimuthExe))
+            if (NormalizeGameRoot(f) is { } g) return g;
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var root in SearchRoots(AppDir, azimuthExe))
+        {
+            if (!seen.Add(root)) continue;
+            foreach (var d in Walk(root, 2))
+                if (IsGameRoot(d)) return d;
+        }
+        return null;
+    }
+
+    public bool PathsValid => File.Exists(AzimuthExe) && IsGameRoot(GameRoot);
 
     /// <summary>The frame rate cap set in Azimuth's launcher (frame_rate= in data\azimuth.ini), 0 if unknown.</summary>
     public int AzimuthFrameRate()

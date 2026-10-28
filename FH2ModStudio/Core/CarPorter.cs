@@ -79,11 +79,62 @@ public sealed class CarPorter
         s.PorterDir = dir;
     }
 
+    /// <summary>The Python the setup script installed numpy into (python.txt next to the exe), if it still exists.
+    /// "py" and "python" can be different installations, and only one of them may have numpy.</summary>
+    public static string? SetupPython()
+    {
+        try
+        {
+            var f = Path.Combine(ModSettings.AppDir, "python.txt");
+            var p = File.Exists(f) ? File.ReadAllText(f).Trim() : "";
+            return p.Length > 0 && File.Exists(p) ? p : null;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+    }
+
+    public static bool NumpyMissing(string output) =>
+        output.Contains("numpy is missing", StringComparison.Ordinal) || output.Contains("No module named 'numpy'", StringComparison.Ordinal);
+
+    /// <summary>pip install numpy for the Python the porter runs with (per user first, then plainly for virtual
+    /// environments); remembers that Python in python.txt. Returns null on success, else pip's last lines.</summary>
+    public async Task<string?> InstallNumpyAsync(Action<string> onLine)
+    {
+        if (Dir == null) return "The car porter folder (fh3port) was not found.";
+        var (_, exeOut) = await CaptureRawAsync(new[] { "-c", "import sys; print(sys.executable)" });
+        var exe = exeOut.Split('\n').Select(l => l.Trim()).LastOrDefault(l => l.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
+        string last = "";
+        foreach (var user in new[] { true, false })
+        {
+            var args = new List<string> { "-m", "pip", "install", "--disable-pip-version-check", "--no-warn-script-location" };
+            if (user) args.Add("--user");
+            args.Add("numpy");
+            var (code, output) = await CaptureRawAsync(args, onLine);
+            last = output;
+            var (check, _) = await CaptureRawAsync(new[] { "-c", "import numpy" });
+            if (check == 0)
+            {
+                if (exe != null) try { File.WriteAllText(Path.Combine(ModSettings.AppDir, "python.txt"), exe); } catch (IOException) { }
+                return null;
+            }
+        }
+        return Tail(last, 4);
+    }
+
+    private async Task<(int Code, string Output)> CaptureRawAsync(IEnumerable<string> args, Action<string>? onLine = null)
+    {
+        var sb = new StringBuilder();
+        var code = await RunAsync(null, args, l => { lock (sb) sb.AppendLine(l); onLine?.Invoke(l); });
+        return (code, sb.ToString());
+    }
+
     /// <summary>Runs "python -u &lt;script&gt; args", calling onLine for every output line (on a worker thread).</summary>
-    public async Task<int> RunAsync(string script, IEnumerable<string> args, Action<string> onLine, CancellationToken token = default)
+    public async Task<int> RunAsync(string? script, IEnumerable<string> args, Action<string> onLine, CancellationToken token = default)
     {
         if (Dir == null) throw new InvalidOperationException("The car porter folder (fh3port) was not found.");
-        foreach (var py in new[] { Python, "py", "python" }.Distinct())
+        foreach (var py in new[] { SetupPython(), Python, "py", "python" }.OfType<string>().Distinct())
         {
             var psi = new ProcessStartInfo(py)
             {
@@ -96,7 +147,7 @@ public sealed class CarPorter
                 StandardErrorEncoding = Encoding.UTF8,
             };
             psi.ArgumentList.Add("-u");
-            psi.ArgumentList.Add(script);
+            if (script != null) psi.ArgumentList.Add(script);
             foreach (var a in args) psi.ArgumentList.Add(a);
             psi.Environment["PYTHONIOENCODING"] = "utf-8";
             psi.Environment["PYTHONUNBUFFERED"] = "1";
