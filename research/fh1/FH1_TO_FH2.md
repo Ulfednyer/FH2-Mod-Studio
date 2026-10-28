@@ -52,7 +52,15 @@ Reventon Roadster, Honda S2000 / Integra R / NSX-R GT, Mazda RX-8, VW Corrado, L
 
 ## Plan (each phase testable on its own)
 
-1. **Read** (done: `fh1zip.py`). Next: an `xds.py` reader - parse the 52-byte header (format, width, height, mips,
+1. **Read** - DONE 2026-10-29: `fh1zip.py` (zips) and `xds.py` (textures -> linear BCn / DDS / PNG preview).
+   xds: header decoded (format, size, tiling, endian 8-in-16, mip count in fetch-constant dword 4 bits 6-9, mip
+   address); untiling = XGAddress2DTiledOffset on 4x4 blocks, levels rounded to power-of-two and 32-block aligned;
+   mips with short side <= 16 texels share one packed tile and are rebuilt from the last stored level (box filter +
+   simple BC encoder) - sizes add up exactly (2048^2 DXT5: base 0x400000 + mips 0x15C000 + tail tile 0x4000).
+   Checked: car atlas / gauge sheet / normal map previews look right, every stored mip matches its downscaled parent
+   (mean error 2-12 vs 30-80 for a wrong offset), 330 textures of 24 debug + retail cars decode (DXT5 269, DXT1 40,
+   DXN 21), 0 failures.
+   Originally planned here: Next: an `xds.py` reader - parse the 52-byte header (format, width, height, mips,
    tiling flag), untile (Xenos 2D tiling, the XGUntileTextureLevel address formula) and swap 8-in-16 -> plain
    BC1/BC2/BC3/BC5. Check by writing DDS files and opening them. Low risk, well documented.
 2. **Textures -> FH2**: write PC-layout swatchbins (FH2 reads FH3 PC BCXT v0.0 textures natively, fh3port tex.py /
