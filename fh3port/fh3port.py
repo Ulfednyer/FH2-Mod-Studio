@@ -1303,7 +1303,7 @@ def plan():
     return out
 
 
-CONVERT_WORKERS = max(1, min(8, (os.cpu_count() or 2) // 2))
+CONVERT_WORKERS = max(1, int(os.environ.get("FH3PORT_WORKERS") or min(8, (os.cpu_count() or 2) // 2)))
 
 
 def _convert_job(job):
