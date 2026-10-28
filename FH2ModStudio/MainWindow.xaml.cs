@@ -29,7 +29,7 @@ public partial class MainWindow : Window
         DatabasePage.Init(this);
         PortPage.Init(this);
         OnStatus(Session.Status);
-        SourceInitialized += (_, _) => GlassHelper.EnableAcrylic(this);
+        SourceInitialized += (_, _) => { GlassHelper.EnableAcrylic(this); GlassHelper.FitMaximizeToWorkArea(this); };
         RestoreWindow();
         Loaded += (_, _) => { if (Settings.UiPage is { Length: > 0 } p && p != "home") ShowPage(p); };
         PreviewKeyDown += (_, e) =>
@@ -173,7 +173,7 @@ public partial class MainWindow : Window
     private void ToggleMaximize() => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
 
     private void Window_StateChanged(object? sender, EventArgs e) =>
-        RootBorder.Margin = WindowState == WindowState.Maximized ? new Thickness(7) : new Thickness(0);
+        RootBorder.Margin = new Thickness(0);   // maximized size = work area (GlassHelper.FitMaximizeToWorkArea), no overhang
 
     private void Window_Closed(object? sender, EventArgs e)
     {

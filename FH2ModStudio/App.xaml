@@ -611,6 +611,9 @@
             <Setter Property="CanUserDeleteRows" Value="False"/>
             <Setter Property="SelectionUnit" Value="Cell"/>
             <Setter Property="EnableRowVirtualization" Value="True"/>
+            <Setter Property="EnableColumnVirtualization" Value="True"/>
+            <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling"/>
+            <Setter Property="VirtualizingPanel.IsVirtualizing" Value="True"/>
             <Setter Property="ColumnHeaderStyle">
                 <Setter.Value>
                     <Style TargetType="DataGridColumnHeader">

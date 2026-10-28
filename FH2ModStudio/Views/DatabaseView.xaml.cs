@@ -18,7 +18,17 @@ public sealed class TableEntry
 
 public partial class DatabaseView : UserControl
 {
-    private const int BrowseLimit = 500;
+    // rows are fetched a page at a time while scrolling (the game answers each query over a pipe; 500 rows x 60
+    // columns at once made the page freeze)
+    private const int PageSize = 200;
+    private const string TextSuffix = " ▸ text";
+    private long _browseTotal;
+    private int _browseToken;
+    private bool _loadingMore;
+    private DataTable? _browseTable;
+    private string _browseSelect = "";
+    private readonly Dictionary<string, Dictionary<int, string>> _stringCache = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, double> _colWidths = new();
     private MainWindow _main = null!;
     private SessionStatus _status = new(GameState.NotRunning, false, false, 0, null);
     private List<TableEntry> _tables = new();
@@ -26,7 +36,11 @@ public partial class DatabaseView : UserControl
     private bool _browseEditable;
     private SqlResult? _browseResult;
 
-    public DatabaseView() => InitializeComponent();
+    public DatabaseView()
+    {
+        InitializeComponent();
+        BrowseGrid.AddHandler(ScrollViewer.ScrollChangedEvent, new ScrollChangedEventHandler(BrowseGrid_ScrollChanged));
+    }
 
     private SqlPipe Sql => _main.Session.Sql;
     private DbHistory History => _main.Session.History;
@@ -124,27 +138,123 @@ public partial class DatabaseView : UserControl
     private async Task LoadBrowseAsync()
     {
         if (_table == null) return;
+        int token = ++_browseToken;
         var q = DbHistory.QuoteIdent(_table);
         TableTitle.Text = _table;
         var count = await Sql.ExecuteAsync($"SELECT COUNT(*) FROM {q}{WhereClause};");
-        var r = await Sql.ExecuteAsync($"SELECT rowid AS __rowid, * FROM {q}{WhereClause} LIMIT {BrowseLimit};");
+        _browseSelect = $"SELECT rowid AS __rowid, * FROM {q}{WhereClause} ORDER BY rowid";
+        var r = await Sql.ExecuteAsync($"{_browseSelect} LIMIT {PageSize};");
         _browseEditable = r.Ok;
-        if (!r.Ok) r = await Sql.ExecuteAsync($"SELECT * FROM {q}{WhereClause} LIMIT {BrowseLimit};");
+        if (!r.Ok)
+        {
+            _browseSelect = $"SELECT * FROM {q}{WhereClause}";
+            r = await Sql.ExecuteAsync($"{_browseSelect} LIMIT {PageSize};");
+        }
+        if (token != _browseToken) return;
         if (!r.Ok || r.Results.Count == 0)
         {
             RowCountTxt.Text = "";
             BrowseGrid.ItemsSource = null;
+            _browseTable = null;
             _main.SetStatus("Query failed: " + r.Error);
             return;
         }
         _browseResult = r.Results[0];
-        long total = count.Ok && count.Results.Count > 0 && long.TryParse(count.Results[0].Rows[0][0], out var n) ? n : _browseResult.Rows.Count;
-        RowCountTxt.Text = total > BrowseLimit ? $"showing first {BrowseLimit} of {total} rows" : $"{total} rows";
-        if (!_browseEditable) RowCountTxt.Text += " · read-only (table has no row ids)";
+        _browseTotal = count.Ok && count.Results.Count > 0 && long.TryParse(count.Results[0].Rows[0][0], out var n) ? n : _browseResult.Rows.Count;
+        _browseTable = NewBrowseTable(_browseResult);
+        AppendRows(_browseResult);
         BrowseGrid.IsReadOnly = !_browseEditable;
-        BrowseGrid.ItemsSource = ToDataTable(_browseResult).DefaultView;
+        BrowseGrid.ItemsSource = _browseTable.DefaultView;
+        UpdateRowCount();
         FillScaleColumns();
         _main.SetStatus(_browseEditable ? $"{_table}: double-click a cell to edit it in the game." : $"{_table} loaded.");
+    }
+
+    private void UpdateRowCount()
+    {
+        int shown = _browseTable?.Rows.Count ?? 0;
+        RowCountTxt.Text = shown < _browseTotal ? $"{shown} of {_browseTotal} rows · more load as you scroll" : $"{_browseTotal} rows";
+        if (!_browseEditable) RowCountTxt.Text += " · read-only (table has no row ids)";
+    }
+
+    private void BrowseGrid_ScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        // next page once the last ~40 rows come into view
+        if (e.VerticalChange <= 0 && e.ExtentHeightChange == 0) return;
+        if (e.VerticalOffset + e.ViewportHeight >= e.ExtentHeight - 40) _ = LoadMoreAsync();
+    }
+
+    private async Task LoadMoreAsync()
+    {
+        if (_loadingMore || _browseTable == null || _browseTable.Rows.Count >= _browseTotal) return;
+        _loadingMore = true;
+        int token = _browseToken;
+        try
+        {
+            var r = await Sql.ExecuteAsync($"{_browseSelect} LIMIT {PageSize} OFFSET {_browseTable.Rows.Count};");
+            if (token != _browseToken || !r.Ok || r.Results.Count == 0) return;
+            AppendRows(r.Results[0]);
+            UpdateRowCount();
+        }
+        finally
+        {
+            _loadingMore = false;
+        }
+    }
+
+    /// <summary>Columns of the query plus, after each column holding string ids ("_&amp;3444639744"), a read-only
+    /// column with the text from the table's string table. Column widths come from the first page.</summary>
+    private DataTable NewBrowseTable(SqlResult first)
+    {
+        var strings = Strings(_table!);
+        var dt = new DataTable();
+        var names = new HashSet<string>();
+        _colWidths = new Dictionary<string, double>();
+        for (int i = 0; i < first.Columns.Count; i++)
+        {
+            var c = first.Columns[i];
+            var name = c;
+            for (int k = 2; !names.Add(name); k++) name = $"{c} ({k})";
+            dt.Columns.Add(name, typeof(string));
+            int len = Math.Max(name.Length, first.Rows.Select(row => row[i]?.Length ?? 4).DefaultIfEmpty(4).Max());
+            _colWidths[name] = Math.Clamp(len * 7 + 18, 48, 320);
+            if (strings.Count > 0 && first.Rows.Any(row => row[i] is { } v && v.StartsWith("_&", StringComparison.Ordinal)))
+            {
+                var textCol = dt.Columns.Add(name + TextSuffix, typeof(string));
+                textCol.ExtendedProperties["source"] = i;
+                int tlen = first.Rows.Select(row => StringTables.Text(strings, row[i])?.Length ?? 0).DefaultIfEmpty(0).Max();
+                _colWidths[textCol.ColumnName] = Math.Clamp(Math.Max(tlen, textCol.ColumnName.Length) * 7 + 18, 60, 320);
+            }
+        }
+        return dt;
+    }
+
+    private void AppendRows(SqlResult page)
+    {
+        if (_browseTable == null) return;
+        var strings = Strings(_table!);
+        _browseTable.BeginLoadData();
+        foreach (var row in page.Rows)
+        {
+            var values = new object[_browseTable.Columns.Count];
+            for (int c = 0, src = 0; c < values.Length; c++)
+            {
+                var col = _browseTable.Columns[c];
+                if (col.ExtendedProperties["source"] is int from)
+                    values[c] = (object?)StringTables.Text(strings, row[from]) ?? DBNull.Value;
+                else
+                    values[c] = (object?)row[src++] ?? DBNull.Value;
+            }
+            _browseTable.Rows.Add(values);
+        }
+        _browseTable.EndLoadData();
+    }
+
+    private Dictionary<int, string> Strings(string table)
+    {
+        if (!_stringCache.TryGetValue(table, out var d))
+            _stringCache[table] = d = StringTables.Load(_main.Settings.MediaDir, table);
+        return d;
     }
 
     private static DataTable ToDataTable(SqlResult r)
@@ -157,7 +267,9 @@ public partial class DatabaseView : UserControl
             for (int i = 2; !names.Add(name); i++) name = $"{c} ({i})";
             dt.Columns.Add(name, typeof(string));
         }
+        dt.BeginLoadData();
         foreach (var row in r.Rows) dt.Rows.Add(row.Select(v => (object?)v ?? DBNull.Value).ToArray());
+        dt.EndLoadData();
         return dt;
     }
 
@@ -165,6 +277,11 @@ public partial class DatabaseView : UserControl
     {
         if (e.PropertyName == "__rowid") { e.Cancel = true; return; }
         e.Column.Header = e.PropertyName;
+        if (sender == BrowseGrid && _colWidths.TryGetValue(e.PropertyName, out var w)) e.Column.Width = new DataGridLength(w);
+        if (e.PropertyName.EndsWith(TextSuffix, StringComparison.Ordinal))
+        {
+            e.Column.IsReadOnly = true;   // shown from the string tables; edit the id column next to it
+        }
         if (e.Column is DataGridBoundColumn bound)
             bound.Binding = new Binding("[" + e.PropertyName + "]") { TargetNullValue = "NULL" };
     }

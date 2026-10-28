@@ -6,14 +6,14 @@
         Height="760" Width="1180"
         MinHeight="640" MinWidth="980"
         WindowStyle="None"
-        AllowsTransparency="True"
+        AllowsTransparency="False"
         Background="Transparent"
         WindowStartupLocation="CenterScreen"
         StateChanged="Window_StateChanged"
         Closed="Window_Closed">
 
     <WindowChrome.WindowChrome>
-        <WindowChrome CaptionHeight="0" ResizeBorderThickness="5" GlassFrameThickness="0"/>
+        <WindowChrome CaptionHeight="0" ResizeBorderThickness="5" GlassFrameThickness="-1" UseAeroCaptionButtons="False"/>
     </WindowChrome.WindowChrome>
 
     <Border x:Name="RootBorder" CornerRadius="0" ClipToBounds="True" BorderThickness="1">

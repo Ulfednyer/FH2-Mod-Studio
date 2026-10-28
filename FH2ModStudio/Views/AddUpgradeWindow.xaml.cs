@@ -522,6 +522,8 @@ public partial class AddUpgradeWindow : Window
         Num(_front, out var front);
         Num(_rear, out var rear);
         bool shopMode = _modeShop?.IsChecked == true;
+        // read every control here: the builders below run on a worker thread, which may not touch WPF controls
+        string aspMode = _modeFixed?.IsChecked == true ? "direct" : shopMode ? "conversion" : "both";
         bool useFront = _frontCheck?.IsChecked == true, useRear = _rearCheck?.IsChecked == true;
         string partLabel = (_partCombo?.SelectedItem as ComboBoxItem)?.Content?.ToString()?.Split("  (")[0].Split("   ·")[0] ?? "";
         int level = -1;
@@ -542,7 +544,7 @@ public partial class AddUpgradeWindow : Window
             }
             var (sql, desc, where) = await Task.Run(() => _kind switch
             {
-                UpgradeKind.Aspiration => (Upgrades.BuildAspiration(_db, _ids, part, d!.Key, _modeFixed?.IsChecked == true ? "direct" : _modeShop?.IsChecked == true ? "conversion" : "both"), $"Added {partLabel.ToLowerInvariant()}", "Engine ▸ Engine parts & upgrades"),
+                UpgradeKind.Aspiration => (Upgrades.BuildAspiration(_db, _ids, part, d!.Key, aspMode), $"Added {partLabel.ToLowerInvariant()}", "Engine ▸ Engine parts & upgrades"),
                 UpgradeKind.EngineSwap => (Upgrades.BuildEngineSwap(_db, _ids, d!.Key, price, mass), $"Added engine swap: {d.Title}", "Engine ▸ Engine swaps"),
                 UpgradeKind.DrivetrainSwap => (Upgrades.BuildDrivetrainSwap(_db, _ids, d!.Key, drive, price, mass), $"Added drivetrain conversion: {d.Title}", "Drivetrain ▸ Drivetrain conversions"),
                 UpgradeKind.TireCompound => (Upgrades.BuildTireCompound(_db, _ids, d!.Key, price), $"Added {d.Title.ToLowerInvariant()}","Tyres & grip ▸ Tyre compound & rim upgrades"),

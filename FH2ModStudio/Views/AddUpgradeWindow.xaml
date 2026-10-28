@@ -2,10 +2,10 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Add upgrade" Height="600" Width="860" MinHeight="480" MinWidth="720"
-        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        WindowStyle="None" AllowsTransparency="False" Background="Transparent"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
     <WindowChrome.WindowChrome>
-        <WindowChrome CaptionHeight="0" ResizeBorderThickness="5" GlassFrameThickness="0"/>
+        <WindowChrome CaptionHeight="0" ResizeBorderThickness="5" GlassFrameThickness="-1" UseAeroCaptionButtons="False"/>
     </WindowChrome.WindowChrome>
     <Window.Resources>
         <DataTemplate x:Key="DonorTemplate">
