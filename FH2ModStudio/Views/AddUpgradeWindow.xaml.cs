@@ -9,6 +9,11 @@ namespace FH2ModStudio.Views;
 
 public sealed record KindItem(UpgradeKind Kind, string Title, string Hint);
 
+/// <summary>What one click on "Add upgrade" produced. CatalogSql = rows shared by every car (also in Sql);
+/// MeshPart/Meshes = body-part meshes to hide while a removal is fitted (BodyParts).</summary>
+public sealed record AddResult(UpgradeKind Kind, string? Table, string Sql, string CatalogSql, string Description, string Where,
+                               string? MeshPart = null, List<string>? Meshes = null);
+
 /// <summary>One dialog for every way of adding an upgrade; opened preselected from wherever the user started.</summary>
 public partial class AddUpgradeWindow : Window
 {
@@ -40,18 +45,31 @@ public partial class AddUpgradeWindow : Window
     private List<Donor> _donors = new();
     private (double F, double R) _stockWidths;
 
-    public string? ResultSql { get; private set; }
-    public string ResultDescription { get; private set; } = "";
-    public string ResultWhere { get; private set; } = "";
+    private readonly ModSettings _settings;
+    private readonly Func<AddResult, Task<string?>> _apply;
+    private readonly bool _stayOpen;
+    private readonly CarPorter _porter = new();
+    private CarMeshes? _meshes;
+    private string? _meshError;
+    private StackPanel? _meshPanel;
+    private TextBlock? _meshNote;
+    private readonly List<CheckBox> _meshChecks = new();
 
-    public AddUpgradeWindow(ICarDb db, ICarDb stock, CarIds ids, UpgradeKind kind, string? table = null)
+    /// <param name="apply">Runs the result against the game (null = success, else the error); the window stays open
+    /// for the next upgrade when stayOpen, else closes after a success.</param>
+    public AddUpgradeWindow(ICarDb db, ICarDb stock, CarIds ids, UpgradeKind kind, string? table, ModSettings settings,
+                            Func<AddResult, Task<string?>> apply, bool stayOpen)
     {
         InitializeComponent();
         _db = db;
         _stock = stock;
         _ids = ids;
         _initialTable = table;
+        _settings = settings;
+        _apply = apply;
+        _stayOpen = stayOpen;
         TitleTxt.Text = $"Add upgrade - {ids.Media}";
+        if (stayOpen) CancelBtn.Content = "Close";
         KindList.ItemsSource = Kinds;
         SourceInitialized += (_, _) => GlassHelper.EnableAcrylic(this);
         KeyDown += (_, e) => { if (e.Key == Key.Escape) Close(); };
@@ -68,6 +86,12 @@ public partial class AddUpgradeWindow : Window
     private async void KindList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (KindList.SelectedItem is not KindItem k) return;
+        if (_stayOpen && _settings.UiAddKind != k.Kind.ToString())
+        {
+            _settings.UiAddKind = k.Kind.ToString();   // the "+ Add upgrade" button reopens on this kind
+            _settings.Save();
+        }
+        DoneTxt.Visibility = Visibility.Collapsed;
         try
         {
             await BuildOptionsAsync(k.Kind);
@@ -175,6 +199,9 @@ public partial class AddUpgradeWindow : Window
         _modeFixed = _modeShop = null;
         _priceRow = null;
         _modeNote = null;
+        _meshPanel = null;
+        _meshNote = null;
+        _meshChecks.Clear();
         _donors = new();
 
         switch (kind)
@@ -302,25 +329,45 @@ public partial class AddUpgradeWindow : Window
 
             case UpgradeKind.BodyPart:
                 OptionsPanel.Children.Add(Heading("Body & aero parts / removal"));
-                OptionsPanel.Children.Add(Body("Adds a body part removal upgrade (Level 4, RequiresGraphics = 0) to hide that 3D part mesh in game, or unlocks aero downforce tuning on stock/locked parts."));
-                _driveCombo = Combo("Upgrade option", new[]
-                {
-                    ("hood", "Remove Hood (Level 4 - exposed engine bay)"),
-                    ("front_bumper", "Remove Front Bumper (Level 4)"),
-                    ("rear_bumper", "Remove Rear Bumper (Level 4)"),
-                    ("rear_wing", "Remove Rear Wing (Level 4)"),
-                    ("side_skirts", "Remove Side Skirts (Level 4)"),
-                    ("unlock_aero", "Unlock Aero Downforce Tuning (all wing & bumper levels)"),
-                });
+                OptionsPanel.Children.Add(Body("Adds a \"remove\" option to the upgrade shop (level 4, like FH2's own wing removals), sold under the car's own brand. " +
+                                               "The ticked meshes disappear while it is fitted. That part is written into the car's file, so FH2 has to be closed for it - " +
+                                               "if the game is running it happens automatically as soon as you close it."));
+                _driveCombo = Combo("Upgrade option", BodyParts.Parts.Select(p => (p.Key, p.RemoveLabel + " (level 4)"))
+                    .Append(("unlock_aero", "Unlock aero downforce tuning (all wing & bumper levels)")));
                 _price = Field("Price in shop", "100", "CR");
                 _mass = Field("Weight change", "-2", "kg");
+                _meshNote = Body("");
+                OptionsPanel.Children.Add(_meshNote);
+                _meshPanel = new StackPanel();
+                OptionsPanel.Children.Add(new Border
+                {
+                    BorderThickness = new Thickness(1), BorderBrush = new SolidColorBrush(Color.FromArgb(0x30, 0, 0, 0)), CornerRadius = new CornerRadius(8),
+                    Padding = new Thickness(8, 4, 8, 4), Margin = new Thickness(0, 0, 0, 8),
+                    Child = new ScrollViewer { MaxHeight = 220, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = _meshPanel },
+                });
                 _driveCombo.SelectionChanged += (_, _) =>
                 {
                     var opt = SelectedDrive();
                     if (_price != null) _price.Text = opt == "unlock_aero" ? "0" : "100";
                     if (_mass != null) _mass.Text = opt == "hood" ? "-3" : opt == "unlock_aero" ? "0" : "-2";
+                    ShowMeshes();
                     UpdatePreview();
                 };
+                ShowMeshes();
+                if (_meshes == null && _meshError == null)
+                {
+                    int t = _token;
+                    try
+                    {
+                        if (!_porter.Locate(_settings)) throw new InvalidOperationException("the car porter folder (fh3port) was not found - set it on the Port FH3 cars page");
+                        _meshes = await BodyParts.ListMeshesAsync(_porter, _ids.Media);
+                    }
+                    catch (Exception ex)
+                    {
+                        _meshError = ex.Message;
+                    }
+                    if (t == _token) ShowMeshes();
+                }
                 break;
 
             case UpgradeKind.ExtraLevel:
@@ -347,6 +394,43 @@ public partial class AddUpgradeWindow : Window
         }
         UpdatePreview();
     }
+
+    /// <summary>Checklist of the always-drawn meshes for the chosen removal: the saved choice, else the suggestion by
+    /// name, ticked and listed first; meshes the car already ties to this shop part are hidden without ticking.</summary>
+    private void ShowMeshes()
+    {
+        if (_meshPanel == null || _meshNote == null) return;
+        _meshPanel.Children.Clear();
+        _meshChecks.Clear();
+        var key = SelectedDrive();
+        var border = (FrameworkElement)((FrameworkElement)_meshPanel.Parent).Parent;
+        bool removal = key != "unlock_aero";
+        border.Visibility = removal && _meshes != null ? Visibility.Visible : Visibility.Collapsed;
+        _meshNote.Visibility = removal ? Visibility.Visible : Visibility.Collapsed;
+        if (!removal) return;
+        if (_meshes == null)
+        {
+            _meshNote.Text = _meshError != null ? "The car's meshes could not be read (" + _meshError + "). The shop option can still be added; nothing disappears until meshes are chosen." : "Reading the car's meshes…";
+            return;
+        }
+        var saved = _settings.BodyPartMeshes.TryGetValue(_ids.Media, out var parts) && parts.TryGetValue(key, out var list) ? list : null;
+        var ticked = new HashSet<string>(saved ?? _meshes.Suggest.GetValueOrDefault(key) ?? new(), StringComparer.OrdinalIgnoreCase);
+        var tagged = _meshes.Parts.TryGetValue(key, out var pid) ? _meshes.Tagged.GetValueOrDefault(pid.ToString(CultureInfo.InvariantCulture)) ?? new() : new();
+        _meshNote.Text = (tagged.Count > 0 ? "Already part of this shop slot and hidden automatically: " + string.Join(", ", tagged.Select(Short)) + ". " : "") +
+                         (saved != null ? "Your earlier choice is ticked." : ticked.Count > 0 ? "Ticked by name - check that these are the right ones." : "No mesh matched by name - tick the ones to hide.") +
+                         " Meshes to hide while the part is removed:";
+        foreach (var m in _meshes.Meshes.OrderBy(m => !ticked.Contains(m)).ThenBy(m => m, StringComparer.OrdinalIgnoreCase))
+        {
+            var cb = new CheckBox { Content = Short(m), Tag = m, IsChecked = ticked.Contains(m), Margin = new Thickness(0, 2, 0, 2) };
+            cb.Click += (_, _) => UpdatePreview();
+            _meshChecks.Add(cb);
+            _meshPanel.Children.Add(cb);
+        }
+    }
+
+    private static string Short(string mesh) => mesh.EndsWith(".modelbin", StringComparison.OrdinalIgnoreCase) ? mesh[..^9] : mesh;
+
+    private List<string> CheckedMeshes() => _meshChecks.Where(c => c.IsChecked == true).Select(c => (string)c.Tag).ToList();
 
     private string? SelectedPart() => (_partCombo?.SelectedItem as ComboBoxItem)?.Tag as string;
     private string SelectedDrive() => (_driveCombo?.SelectedItem as ComboBoxItem)?.Tag as string ?? "3";
@@ -420,7 +504,8 @@ public partial class AddUpgradeWindow : Window
                 : $"Always fits front {_front!.Text} mm / rear {_rear!.Text} mm spacers per side from the next car load.",
             UpgradeKind.BodyPart => SelectedDrive() == "unlock_aero"
                 ? "Unlocks aero downforce tuning on this car's wings and bumpers, making front and rear downforce fully adjustable in the tuning menu."
-                : $"Adds {((ComboBoxItem)_driveCombo!.SelectedItem).Content.ToString()!.Split(" (")[0]} for {_price!.Text} CR ({_mass!.Text} kg weight change).",
+                : $"Adds {((ComboBoxItem)_driveCombo!.SelectedItem).Content.ToString()!.Split(" (")[0].ToLowerInvariant()} for {_price!.Text} CR ({_mass!.Text} kg weight change)" +
+                  (_meshes == null ? "." : CheckedMeshes().Count is var n && n > 0 ? $"; {n} mesh(es) disappear while fitted." : "; no ticked mesh - only meshes already tied to this slot disappear."),
             UpgradeKind.ExtraLevel => $"Adds {((ComboBoxItem)_partCombo!.SelectedItem).Content!.ToString()!.Split("   ·")[0]} to the upgrade shop, starting as a copy of the nearest level.",
             _ => "",
         };
@@ -444,7 +529,18 @@ public partial class AddUpgradeWindow : Window
             (part, level) = (t, int.Parse(l, CultureInfo.InvariantCulture));
         try
         {
-            (ResultSql, ResultDescription, ResultWhere) = await Task.Run(() => _kind switch
+            string catalog = "", brandSql = "";
+            long brand = 1;   // "Stock" when the make can't be looked up
+            if (_kind == UpgradeKind.BodyPart && drive != "unlock_aero")
+            {
+                var makeRow = await Task.Run(() => _db.Query($"SELECT MakeID FROM Data_Car WHERE Id = {_ids.CarId};", out _));
+                if (_porter.Locate(_settings) && makeRow is { Rows.Count: > 0 } && long.TryParse(makeRow.Rows[0][0], out var makeId))
+                {
+                    var b = await BodyParts.MakeAsync(_porter, makeId);
+                    (brand, brandSql) = await Task.Run(() => BodyParts.Brand(_db, b));
+                }
+            }
+            var (sql, desc, where) = await Task.Run(() => _kind switch
             {
                 UpgradeKind.Aspiration => (Upgrades.BuildAspiration(_db, _ids, part, d!.Key, _modeFixed?.IsChecked == true ? "direct" : _modeShop?.IsChecked == true ? "conversion" : "both"), $"Added {partLabel.ToLowerInvariant()}", "Engine ▸ Engine parts & upgrades"),
                 UpgradeKind.EngineSwap => (Upgrades.BuildEngineSwap(_db, _ids, d!.Key, price, mass), $"Added engine swap: {d.Title}", "Engine ▸ Engine swaps"),
@@ -454,12 +550,26 @@ public partial class AddUpgradeWindow : Window
                 UpgradeKind.Spacers => shopMode
                     ? (Upgrades.BuildShopSpacers(_db, _stock, _ids, front, rear, price), "Added shop wheel spacers", "Tyres & grip ▸ Wheel spacers - shop upgrade")
                     : (Upgrades.BuildFixedSpacers(_stock, _ids, front, rear), "Set always-fitted wheel spacers", "Tyres & grip ▸ Wheel spacers - always fitted"),
-                UpgradeKind.BodyPart => drive == "unlock_aero"
-                    ? (Upgrades.UnlockAeroTuningForCar(_db, _ids), "Unlocked aero tuning", "Aerodynamics ▸ Wing & bumper downforce (List_AeroPhysics)")
-                    : (Upgrades.BuildBodyPartRemoval(_db, _ids, drive, price, mass), $"Added {drive.Replace('_', ' ')} removal", "Aerodynamics ▸ Wing & bumper upgrades"),
+                UpgradeKind.BodyPart when drive == "unlock_aero" =>
+                    (Upgrades.UnlockAeroTuningForCar(_db, _ids), "Unlocked aero tuning", "Aerodynamics ▸ Wing & bumper downforce (List_AeroPhysics)"),
+                UpgradeKind.BodyPart => BodyPartSql(drive, price, mass, brand, brandSql, out catalog),
                 _ => (Upgrades.BuildExtraLevel(_db, _ids, part, level), $"Added {partLabel}", "the section that holds this part"),
             });
-            DialogResult = true;
+            bool meshes = _kind == UpgradeKind.BodyPart && drive != "unlock_aero" && _meshes != null;
+            var result = new AddResult(_kind, _kind == UpgradeKind.ExtraLevel ? part : BodyParts.Parts.FirstOrDefault(p => p.Key == drive)?.Table,
+                                       sql, catalog, desc, where, meshes ? drive : null, meshes ? CheckedMeshes() : null);
+            var error = await _apply(result);
+            if (error != null) throw new InvalidOperationException(error);
+            if (!_stayOpen)
+            {
+                DialogResult = true;
+                return;
+            }
+            // stay open for the next upgrade: rebuild the options (slots just filled are gone) and say what happened
+            await BuildOptionsAsync(_kind);
+            if (_driveCombo?.Items.Cast<ComboBoxItem>().FirstOrDefault(i => (string)i.Tag == drive) is { } same) _driveCombo.SelectedItem = same;
+            DoneTxt.Text = "✓ " + desc + " - shown under " + where + ". Add another, or close.";
+            DoneTxt.Visibility = Visibility.Visible;
         }
         catch (Exception ex) when (ex is InvalidOperationException or IOException)
         {
@@ -467,5 +577,13 @@ public partial class AddUpgradeWindow : Window
             PreviewTxt.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x3B, 0x30));
             AddBtn.IsEnabled = true;
         }
+    }
+
+    private (string Sql, string Desc, string Where) BodyPartSql(string key, double price, double mass, long brand, string brandSql, out string catalog)
+    {
+        var (carSql, catalogSql) = Upgrades.BuildBodyPartRemoval(_db, _ids, key, price, mass, brand);
+        catalog = brandSql + catalogSql;
+        var label = BodyParts.Parts.First(p => p.Key == key).RemoveLabel;
+        return (catalog + carSql, carSql.StartsWith("UPDATE") ? $"Updated {label.ToLowerInvariant()}" : $"Added {label.ToLowerInvariant()}", "Aerodynamics ▸ Wing & bumper upgrades");
     }
 }

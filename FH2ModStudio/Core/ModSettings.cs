@@ -33,6 +33,15 @@ public sealed class ModSettings
     public string PorterDir { get; set; } = "";              // fh2sql\fh3port (FH3 -> FH2 car porter); found automatically
     public bool PortKeepPlates { get; set; }                 // licence plates: FH2 shows them as zeros, hidden by default
 
+    // body-part removal (BodyParts): meshes hidden per car and part, and cars whose .carbin waits for FH2 to close
+    public Dictionary<string, Dictionary<string, List<string>>> BodyPartMeshes { get; set; } = new();
+    public List<string> BodyPartPending { get; set; } = new();
+
+    // where the user was in the Cars page, restored on the next start
+    public string UiCarsCar { get; set; } = "";
+    public string UiCarsSection { get; set; } = "";
+    public string UiAddKind { get; set; } = "";
+
     // drift suspension (DriftDragPack): alignment in its physics rows, steering applied by fh2sql.dll while installed
     public double DriftFrontCamber { get; set; } = -5.0;
     public double DriftRearCamber { get; set; } = -1.0;

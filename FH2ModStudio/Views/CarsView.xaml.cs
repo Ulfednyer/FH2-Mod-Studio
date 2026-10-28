@@ -87,6 +87,13 @@ public partial class CarsView : UserControl
         });
         CarCountTxt.Text = _catalog.Count.ToString(CultureInfo.InvariantCulture);
         ApplySearch();
+        if (_sections.FirstOrDefault(x => x.Def.Id == _main.Settings.UiCarsSection) is { } lastSection) SectionList.SelectedItem = lastSection;
+        if (_catalog.FirstOrDefault(c => c.Media == _main.Settings.UiCarsCar) is { } lastCar)
+        {
+            CarList.SelectedItem = lastCar;
+            CarList.ScrollIntoView(lastCar);
+        }
+        _ = FlushBodyPartsAsync();
     }
 
     public void OnStatus(SessionStatus s)
@@ -95,6 +102,7 @@ public partial class CarsView : UserControl
         _status = s;
         if (modeChanged && _car != null && _pending.Count == 0) _ = LoadCarAsync(_car);
         else UpdateModeBadge();
+        if (s.Game == GameState.NotRunning) _ = FlushBodyPartsAsync();
     }
 
     // ───────────── car list ─────────────
@@ -143,6 +151,11 @@ public partial class CarsView : UserControl
     private async Task LoadCarAsync(CarEntry car)
     {
         _car = car;
+        if (_main.Settings.UiCarsCar != car.Media)
+        {
+            _main.Settings.UiCarsCar = car.Media;
+            _main.Settings.Save();
+        }
         EmptyPanel.Visibility = Visibility.Collapsed;
         HeaderCard.Visibility = EditorArea.Visibility = ApplyBar.Visibility = Visibility.Visible;
         CarTitle.Text = car.Media;
@@ -221,7 +234,8 @@ public partial class CarsView : UserControl
         _ => "",
     };
 
-    private void AddUpgrade_Click(object sender, RoutedEventArgs e) => OpenAddDialog(UpgradeKind.Aspiration, null);
+    private void AddUpgrade_Click(object sender, RoutedEventArgs e) =>
+        OpenAddDialog(Enum.TryParse<UpgradeKind>(_main.Settings.UiAddKind, out var k) ? k : UpgradeKind.Aspiration, null, stayOpen: true);
 
     private async void DriftDrag_Click(object sender, RoutedEventArgs e)
     {
@@ -325,36 +339,105 @@ public partial class CarsView : UserControl
         await LoadCarAsync(car);
     }
 
-    private async void OpenAddDialog(UpgradeKind kind, string? table)
+    private async void OpenAddDialog(UpgradeKind kind, string? table, bool stayOpen = false)
     {
         if (_car == null || _ids == null || _stock == null) return;
         var car = _car;
         var ids = _ids;
         var db = await Task.Run(CurrentDb);
-        var dlg = new AddUpgradeWindow(db, _stock, ids, kind, table) { Owner = Window.GetWindow(this) };
-        if (dlg.ShowDialog() != true || dlg.ResultSql == null) return;
+        var dlg = new AddUpgradeWindow(db, _stock, ids, kind, table, _main.Settings, r => ApplyAddAsync(car, ids, db, r, stayOpen), stayOpen)
+        {
+            Owner = Window.GetWindow(this),
+        };
+        dlg.ShowDialog();
+    }
+
+    /// <summary>Runs one result of the add-upgrade window; null = success, else the error for the window to show.</summary>
+    private async Task<string?> ApplyAddAsync(CarEntry car, CarIds ids, ICarDb db, AddResult r, bool stayOpen)
+    {
         bool keep = !_status.DatabaseReady || KeepCheck.IsChecked == true;
-        var sql = dlg.ResultSql;
-        var desc = $"{car.Media}: {dlg.ResultDescription}";
+        var desc = $"{car.Media}: {r.Description}";
         var error = await Task.Run(() =>
         {
-            var err = db.Execute(sql, desc);
-            if (err == null && keep) CarModel.UpsertCarMod(_main.Settings, car.Media, CarModel.DiffAgainstStock(db, _stock, ids));
+            var err = r.Sql.Trim().Length > 0 ? db.Execute(r.Sql, desc) : null;
+            if (err == null && keep) CarModel.UpsertCarMod(_main.Settings, car.Media, CarModel.DiffAgainstStock(db, _stock!, ids));
+            if (err == null && r.CatalogSql.Trim().Length > 0) BodyParts.AddToCatalog(_main.Settings, r.CatalogSql);
             if (!db.IsLive) _offlineModsHash = string.Join("|", _main.Settings.DbMods.Where(m => m.Enabled).Select(m => m.Sql.GetHashCode()));
             return err;
         });
         if (error != null)
         {
             _main.SetStatus("Could not add the upgrade: " + error);
-            return;
+            return error;
         }
-        _main.SetStatus($"{dlg.ResultDescription} on {car.Media} - shown under {dlg.ResultWhere}.{(keep ? " Kept for future launches." : "")} " +
-                        "Re-select the car, then open the upgrade shop.");
+        if (r.MeshPart != null && r.Meshes != null) BodyParts.SaveMeshes(_main.Settings, car.Media, r.MeshPart, r.Meshes);
+        var status = $"{r.Description} on {car.Media} - shown under {r.Where}.{(keep ? " Kept for future launches." : "")} Re-select the car, then open the upgrade shop.";
+        _main.SetStatus(status);
         _main.HomePage.RefreshSummary();
         UpdateModifiedText();
-        var target = SectionFor(kind);
-        if (target.Length > 0) SectionList.SelectedItem = _sections.First(s => s.Def.Id == target);
-        await LoadCarAsync(car);
+        if (r.Kind == UpgradeKind.BodyPart || BodyParts.IsPartTable(r.Table))
+            await SyncBodyPartsAsync(car, ids, status);
+        var target = SectionFor(r.Kind);
+        if (!stayOpen && target.Length > 0 && _car == car) SectionList.SelectedItem = _sections.First(s => s.Def.Id == target);
+        if (_car == car) await LoadCarAsync(car);
+        return null;
+    }
+
+    // ───────────── body-part meshes (the car's .carbin, see BodyParts) ─────────────
+
+    /// <summary>Rebuilds the car's .carbin for its current shop rows now, or once FH2 is closed (the game keeps car
+    /// zips open). Only cars with removal rows or a saved mesh choice are touched.</summary>
+    private async Task SyncBodyPartsAsync(CarEntry car, CarIds ids, string? statusPrefix = null)
+    {
+        var s = _main.Settings;
+        bool relevant = await Task.Run(() => BodyParts.Relevant(CurrentDb(), _stock!, ids, s));
+        if (!relevant && !s.BodyPartPending.Contains(car.Media)) return;
+        if (BodyParts.GameRunning)
+        {
+            if (!s.BodyPartPending.Contains(car.Media)) { s.BodyPartPending.Add(car.Media); s.Save(); }
+            _main.SetStatus((statusPrefix != null ? statusPrefix + " " : "") +
+                            "The part meshes are written into the car's file as soon as FH2 is closed (Mod Studio does it automatically).");
+            return;
+        }
+        var porter = new CarPorter();
+        string msg;
+        try
+        {
+            if (!porter.Locate(s)) throw new InvalidOperationException("the car porter folder (fh3port) was not found");
+            msg = await BodyParts.SyncAsync(porter, CurrentDb(), ids, s);
+            s.BodyPartPending.Remove(car.Media);
+            s.Save();
+        }
+        catch (Exception ex)
+        {
+            if (!s.BodyPartPending.Contains(car.Media)) { s.BodyPartPending.Add(car.Media); s.Save(); }
+            msg = "car file NOT updated (" + ex.Message + ") - retried when you next change the car or close FH2";
+        }
+        _main.SetStatus((statusPrefix != null ? statusPrefix + " " : "") + $"{car.Media}: {msg}.");
+    }
+
+    private bool _syncingPending;
+
+    /// <summary>Writes the .carbin changes that waited for FH2 to close.</summary>
+    private async Task FlushBodyPartsAsync()
+    {
+        if (_syncingPending || _stock == null || _main.Settings.BodyPartPending.Count == 0 || BodyParts.GameRunning) return;
+        _syncingPending = true;
+        try
+        {
+            foreach (var media in _main.Settings.BodyPartPending.ToList())
+            {
+                var car = _catalog.FirstOrDefault(c => c.Media.Equals(media, StringComparison.OrdinalIgnoreCase));
+                if (car == null) { _main.Settings.BodyPartPending.Remove(media); continue; }
+                var ids = await Task.Run(() => CarModel.ResolveIds(CurrentDb(), car));
+                await SyncBodyPartsAsync(car, ids);
+            }
+            _main.Settings.Save();
+        }
+        finally
+        {
+            _syncingPending = false;
+        }
     }
 
     private async void RemoveAdded(string table, string keyColumn, string key, string label)
@@ -381,6 +464,8 @@ public partial class CarsView : UserControl
         foreach (var k in _pending.Keys.Where(k => k.StartsWith($"{table}|{key}|", StringComparison.Ordinal)).ToList()) _pending.Remove(k);
         UpdateModifiedText();
         UpdateDirty();
+        if (error == null && (BodyParts.IsPartTable(table) || table == "List_UpgradeCarBody"))
+            await SyncBodyPartsAsync(car, ids, $"Removed {label} from {car.Media}.");
         await LoadCarAsync(car);
     }
 
@@ -402,12 +487,32 @@ public partial class CarsView : UserControl
 
     // ───────────── sections ─────────────
 
-    private void SectionList_SelectionChanged(object sender, SelectionChangedEventArgs e) => _ = LoadSectionAsync();
+    private void SectionList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (SectionList.SelectedItem is SectionItem item && _main.Settings.UiCarsSection != item.Def.Id)
+        {
+            _main.Settings.UiCarsSection = item.Def.Id;
+            _main.Settings.Save();
+        }
+        _ = LoadSectionAsync();
+    }
+
+    // scroll offset per section, kept while reloading (apply, add, car switch) so the view doesn't jump
+    private readonly Dictionary<string, double> _scroll = new();
+    private string? _shownSection;
+    private bool _loadingSection;
+
+    private void EditorScroll_ScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        if (!_loadingSection && _shownSection != null) _scroll[_shownSection] = EditorScroll.VerticalOffset;
+    }
 
     private async Task LoadSectionAsync()
     {
         if (SectionList.SelectedItem is not SectionItem item || _ids == null || _db == null || _stock == null) return;
         int token = ++_loadToken;
+        _loadingSection = true;
+        _shownSection = item.Def.Id;
         SectionTitle.Text = item.Def.Title;
         SectionDesc.Text = item.Def.Description;
         LoadProgress.Visibility = Visibility.Visible;
@@ -418,7 +523,9 @@ public partial class CarsView : UserControl
         if (token != _loadToken) return;
         LoadProgress.Visibility = Visibility.Collapsed;
         foreach (var gd in groups) GroupPanel.Children.Add(BuildGroupCard(gd));
-        EditorScroll.ScrollToTop();
+        var offset = _scroll.GetValueOrDefault(item.Def.Id);
+        await Dispatcher.InvokeAsync(() => EditorScroll.ScrollToVerticalOffset(offset), System.Windows.Threading.DispatcherPriority.Loaded);
+        if (token == _loadToken) _loadingSection = false;
     }
 
     private GroupData LoadGroup(GroupDef def, CarIds ids, ICarDb db)
@@ -813,6 +920,7 @@ public partial class CarsView : UserControl
         if (_pending.Values.FirstOrDefault(p => p.Table == "Data_Drivetrain" && p.Column.Equals("DrivetypeID", StringComparison.OrdinalIgnoreCase)) is { } drive)
             statements.Add(CarModel.UpdateSql("Data_Car", "Id", car.Id.ToString(CultureInfo.InvariantCulture), new[] { ("DriveTypeID", drive.Value) }));
         int n = _pending.Count;
+        bool bodyRows = _pending.Values.Any(p => BodyParts.IsPartTable(p.Table));
         ApplyBtn.IsEnabled = false;
         var (error, live) = await Task.Run(() =>
         {
@@ -835,6 +943,7 @@ public partial class CarsView : UserControl
         _main.HomePage.RefreshSummary();
         UpdateModifiedText();
         UpdateDirty();
+        if (bodyRows) await SyncBodyPartsAsync(car, ids);
         await LoadCarAsync(car);
     }
 
@@ -862,6 +971,12 @@ public partial class CarsView : UserControl
             return err;
         });
         _main.SetStatus(error == null ? $"{car.Media} is back to stock." : "Reset failed: " + error);
+        if (error == null && _main.Settings.BodyPartMeshes.Remove(car.Media))
+        {
+            _main.Settings.Save();
+            if (!_main.Settings.BodyPartPending.Contains(car.Media)) _main.Settings.BodyPartPending.Add(car.Media);
+            await SyncBodyPartsAsync(car, ids, $"{car.Media} is back to stock.");
+        }
         _main.HomePage.RefreshSummary();
         UpdateModifiedText();
         UpdateDirty();

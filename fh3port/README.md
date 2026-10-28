@@ -685,3 +685,14 @@ Paths inside the scripts point at the session scratchpad; adjust before reuse.
     grilles use the pattern's `_opac` texture as `AlphaTexture` + `CH1OpacityMaskSwitchBool` + alpha test (`TSTA` 1).
   - Restored textures must exist: FH3 references some library textures it ships nowhere (`decorative_00x_opac`,
     `stitch_015` ...) - those keep the converter's stand-in.
+
+## 16. Body-part removal upgrades (2026-10-28)
+
+`bodyparts.py` (called by FH2 Mod Studio's "Body & aero parts / removal"): the shop row (level 4, RequiresGraphics 0,
+the car make's part manufacturer) only hides meshes the `.carbin` tags with upgrade row Ids. The Gallardo's wing is
+tagged (works), its hood / rear bumper / skirts are always-drawn body meshes (didn't). The script moves the chosen meshes
+into the part's upgradable list, tagged with every row Id except the removal rows, and gives rows the `.carbin` doesn't
+know (levels added as copies) the models of the nearest known level - otherwise the part vanished at that level (the
+Gallardo's level-1 wing copy). Always rebuilt from the saved original `.carbin` (`FH3Port_Backupodyparts`), the zip is
+backed up through the journal; FH2 must be closed. `list` / `apply` / `restore` / `make` - see the script's docstring.
+

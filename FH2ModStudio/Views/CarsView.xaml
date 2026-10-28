@@ -125,7 +125,7 @@
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
-                <ScrollViewer x:Name="EditorScroll" Grid.Column="1" VerticalScrollBarVisibility="Auto" Padding="4,4,12,10">
+                <ScrollViewer x:Name="EditorScroll" Grid.Column="1" VerticalScrollBarVisibility="Auto" Padding="4,4,12,10" ScrollChanged="EditorScroll_ScrollChanged">
                     <StackPanel>
                         <TextBlock x:Name="SectionTitle" FontSize="16" FontWeight="Bold" Foreground="#1C1C1E" Margin="5,0,0,2"/>
                         <TextBlock x:Name="SectionDesc" Style="{StaticResource BodyTxt}" Margin="5,0,0,4"/>

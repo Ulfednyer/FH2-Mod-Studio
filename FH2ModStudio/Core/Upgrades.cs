@@ -582,66 +582,38 @@ public static class Upgrades
         return sb.ToString();
     }
 
-    public static string BuildBodyPartRemoval(ICarDb db, CarIds ids, string partKey, double price = 100, double massDiff = -2.0)
+    // removal row per part: key column, shop string, extra columns (FH2's own removal rows: level 4, RequiresGraphics 0)
+    private static readonly Dictionary<string, (string Table, string PartsStringId, (string Col, string Val)[] Extra)> Removal = new()
     {
-        var sb = new StringBuilder();
-        switch (partKey.ToLowerInvariant())
-        {
-            case "hood":
-                sb.Append(EnsureHoodRemovalCatalog(db));
-                if (ids.BodyId is { } bodyId)
-                {
-                    if (Scalar(db, $"SELECT COUNT(*) FROM List_UpgradeCarBodyHood WHERE CarBodyId = {bodyId} AND Level = 4;") > 0)
-                        throw new InvalidOperationException("Hood removal upgrade already exists on this car.");
-                    long id = NextId(db, "List_UpgradeCarBodyHood", bodyId, new HashSet<long>());
-                    sb.AppendLine(CarModel.InsertSql("List_UpgradeCarBodyHood",
-                        new[] { "Id", "CarBodyID", "Level", "IsStock", "Sequence", "ManufacturerId", "PartsStringId", "MassDiff", "WeightDistDiff", "DragScale", "WindInstabilityScale", "Price", "RequiresGraphics" },
-                        new[] { id.ToString(CultureInfo.InvariantCulture), bodyId.ToString(CultureInfo.InvariantCulture), "4", "0", "2", "0", "108", F(massDiff), "-0.001", "1.0", "1.0", ((int)price).ToString(CultureInfo.InvariantCulture), "0" }));
-                }
-                break;
-            case "front_bumper":
-                if (ids.BodyId is { } fbBodyId)
-                {
-                    if (Scalar(db, $"SELECT COUNT(*) FROM List_UpgradeCarBodyFrontBumper WHERE CarBodyId = fbBodyId AND Level = 4;") > 0)
-                        throw new InvalidOperationException("Front bumper removal upgrade already exists on this car.");
-                    long id = NextId(db, "List_UpgradeCarBodyFrontBumper", fbBodyId, new HashSet<long>());
-                    sb.AppendLine(CarModel.InsertSql("List_UpgradeCarBodyFrontBumper",
-                        new[] { "Id", "CarBodyID", "Level", "IsStock", "Sequence", "ManufacturerId", "PartsStringId", "MassDiff", "DragScale", "WindInstabilityScale", "Price", "AeroPhysicsID", "RequiresGraphics" },
-                        new[] { id.ToString(CultureInfo.InvariantCulture), fbBodyId.ToString(CultureInfo.InvariantCulture), "4", "0", "2", "255", "26", F(massDiff), "1.0", "1.0", ((int)price).ToString(CultureInfo.InvariantCulture), "20", "0" }));
-                }
-                break;
-            case "rear_bumper":
-                if (ids.BodyId is { } rbBodyId)
-                {
-                    if (Scalar(db, $"SELECT COUNT(*) FROM List_UpgradeCarBodyRearBumper WHERE CarBodyId = rbBodyId AND Level = 4;") > 0)
-                        throw new InvalidOperationException("Rear bumper removal upgrade already exists on this car.");
-                    long id = NextId(db, "List_UpgradeCarBodyRearBumper", rbBodyId, new HashSet<long>());
-                    sb.AppendLine(CarModel.InsertSql("List_UpgradeCarBodyRearBumper",
-                        new[] { "Id", "CarBodyID", "Level", "IsStock", "Sequence", "ManufacturerId", "PartsStringId", "MassDiff", "DragScale", "WindInstabilityScale", "Price", "BodyAeroForwardDownforceFront", "BodyAeroForwardDownforceRear", "RequiresGraphics" },
-                        new[] { id.ToString(CultureInfo.InvariantCulture), rbBodyId.ToString(CultureInfo.InvariantCulture), "4", "0", "2", "255", "53", F(massDiff), "1.0", "1.0", ((int)price).ToString(CultureInfo.InvariantCulture), "0.0", "0.0", "0" }));
-                }
-                break;
-            case "rear_wing":
-                if (Scalar(db, $"SELECT COUNT(*) FROM List_UpgradeRearWing WHERE Ordinal = {ids.CarId} AND Level = 4;") > 0)
-                    throw new InvalidOperationException("Rear wing removal upgrade already exists on this car.");
-                long rwId = NextId(db, "List_UpgradeRearWing", ids.CarId * 1000, new HashSet<long>());
-                sb.AppendLine(CarModel.InsertSql("List_UpgradeRearWing",
-                    new[] { "Id", "Ordinal", "Level", "IsStock", "Sequence", "ManufacturerId", "PartsStringId", "MassDiff", "DragScale", "WindInstabilityScale", "Price", "AeroPhysicsID", "RequiresGraphics" },
-                    new[] { rwId.ToString(CultureInfo.InvariantCulture), ids.CarId.ToString(CultureInfo.InvariantCulture), "4", "0", "2", "255", "80", F(massDiff), "0.97", "1.0", ((int)price).ToString(CultureInfo.InvariantCulture), "19", "0" }));
-                break;
-            case "side_skirts":
-                if (ids.BodyId is { } ssBodyId)
-                {
-                    if (Scalar(db, $"SELECT COUNT(*) FROM List_UpgradeCarBodySideSkirt WHERE CarBodyId = ssBodyId AND Level = 4;") > 0)
-                        throw new InvalidOperationException("Side skirts removal upgrade already exists on this car.");
-                    long id = NextId(db, "List_UpgradeCarBodySideSkirt", ssBodyId, new HashSet<long>());
-                    sb.AppendLine(CarModel.InsertSql("List_UpgradeCarBodySideSkirt",
-                        new[] { "Id", "CarBodyID", "Level", "IsStock", "Sequence", "ManufacturerId", "PartsStringId", "MassDiff", "DragScale", "WindInstabilityScale", "Price", "RequiresGraphics" },
-                        new[] { id.ToString(CultureInfo.InvariantCulture), ssBodyId.ToString(CultureInfo.InvariantCulture), "4", "0", "2", "255", "82", F(massDiff), "1.0", "1.0", ((int)price).ToString(CultureInfo.InvariantCulture), "0" }));
-                }
-                break;
-        }
-        return sb.ToString();
+        ["hood"] = ("List_UpgradeCarBodyHood", "108", new[] { ("WeightDistDiff", "-0.001"), ("DragScale", "1.0") }),
+        ["front_bumper"] = ("List_UpgradeCarBodyFrontBumper", "26", new[] { ("DragScale", "1.0"), ("AeroPhysicsID", "20") }),
+        ["rear_bumper"] = ("List_UpgradeCarBodyRearBumper", "53", new[] { ("DragScale", "1.0"), ("BodyAeroForwardDownforceFront", "0.0"), ("BodyAeroForwardDownforceRear", "0.0") }),
+        ["rear_wing"] = ("List_UpgradeRearWing", "80", new[] { ("DragScale", "0.97"), ("AeroPhysicsID", "19") }),
+        ["side_skirts"] = ("List_UpgradeCarBodySideSkirt", "82", new[] { ("DragScale", "1.0") }),
+    };
+
+    /// <summary>A level-4 removal row for a body part. manufacturerId = the car make's brand (BodyParts.Brand), shown in the
+    /// shop like FH2's own removals (Porsche on the 911 GT2's). A car that already has one gets its price, weight and brand
+    /// updated instead. CatalogSql = rows shared by every car (hood level-4 shop entry), kept in BodyParts' catalog mod.</summary>
+    public static (string CarSql, string CatalogSql) BuildBodyPartRemoval(ICarDb db, CarIds ids, string partKey, double price, double massDiff, long manufacturerId)
+    {
+        if (!Removal.TryGetValue(partKey, out var r)) throw new InvalidOperationException("Unknown part: " + partKey);
+        var catalog = partKey == "hood" ? EnsureHoodRemovalCatalog(db) : "";
+        bool wing = partKey == "rear_wing";
+        if (!wing && ids.BodyId is null) throw new InvalidOperationException("This car has no body row - nothing to attach the part to.");
+        string keyCol = wing ? "Ordinal" : "CarBodyID";
+        long key = wing ? ids.CarId : ids.BodyId!.Value;
+        string where = $"{keyCol} = {key} AND Level = 4 AND RequiresGraphics = 0";
+        string priceTxt = ((int)price).ToString(CultureInfo.InvariantCulture), manu = manufacturerId.ToString(CultureInfo.InvariantCulture);
+        if (Scalar(db, $"SELECT COUNT(*) FROM {Q(r.Table)} WHERE {where};") > 0)
+            return ($"UPDATE {Q(r.Table)} SET ManufacturerId = {manu}, Price = {priceTxt}, MassDiff = {F(massDiff)} WHERE {where};\n", catalog);
+        if (Scalar(db, $"SELECT COUNT(*) FROM {Q(r.Table)} WHERE {keyCol} = {key} AND Level = 4;") > 0)
+            throw new InvalidOperationException("Shop level 4 of this part is already used by another upgrade on this car - remove that one first.");
+        long id = NextId(db, r.Table, wing ? ids.CarId * 1000 : key, new HashSet<long>());
+        var cols = new List<string> { "Id", keyCol, "Level", "IsStock", "Sequence", "ManufacturerId", "PartsStringId", "MassDiff", "WindInstabilityScale", "Price", "RequiresGraphics" };
+        var vals = new List<string> { id.ToString(CultureInfo.InvariantCulture), key.ToString(CultureInfo.InvariantCulture), "4", "0", "2", manu, r.PartsStringId, F(massDiff), "1.0", priceTxt, "0" };
+        foreach (var (c, v) in r.Extra) { cols.Add(c); vals.Add(v); }
+        return (CarModel.InsertSql(r.Table, cols, vals) + "\n", catalog);
     }
 
     public static string UnlockAeroTuningForCar(ICarDb db, CarIds ids)

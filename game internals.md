@@ -215,6 +215,17 @@ length** (a stale second size made the game read truncated layouts and crash D3D
   language. FH2 Mod Studio adds drift suspension (spring level 5, Upgrades 274), drift tyres (tyre level 6, Upgrades 275)
   and fills FH2's existing drag slot (tyre level 4).
 - Tyre slot → compound in stock data: 1 street (5), 2 sport (6), 3 race (7), 5 rally (9).
+- **Which meshes a part draws** is in the car's `.carbin`, not the database. Plain parts (type 2 body, 4 brakes, 43
+  wheels) are always drawn; upgradable parts have id = `UpgradeTypes.PartEnum` (9 rear wing, 34 front bumper, 35 rear
+  bumper, 36 hood, 37 side skirts, 40 seats, 41 roll cage) and tag each model with the `List_Upgrade*.Id`s it draws
+  for. An installed row Id no model is tagged with draws nothing - that is how FH2's own level-4 removals work
+  (RequiresGraphics 0, no carbin entry, e.g. POR_911GT2_95 wing row 261004) and why a copied level (new Id) makes the
+  part vanish. Most cars keep hood / rear bumper / skirts in the always-drawn body (hood: 476 body vs 134 tagged), so a
+  removal row alone hides nothing there. Upgrade entry: u8 level, u8 isStock, u32 row Id, u32 body row Id (-1 wing),
+  u8, AABB min/max (FLT_MAX when empty). `fh3port/bodyparts.py` moves chosen meshes into the tagged list.
+- Removal rows show the car make's `List_PartManufacturer` (FH2's: Porsche on the 911's). Ids are not the make ids
+  (Lamborghini make 21 = part maker 54, Toyota = 255); DLC rows hold plain names ('Rocket Bunny', 'RWB'),
+  `LogoPath` = a `Livery_Decals` file stem (its `AlphaSort` is the plain name).
 
 ## 10. Audio
 
