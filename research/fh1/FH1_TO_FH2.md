@@ -63,7 +63,15 @@ Reventon Roadster, Honda S2000 / Integra R / NSX-R GT, Mazda RX-8, VW Corrado, L
    Originally planned here: Next: an `xds.py` reader - parse the 52-byte header (format, width, height, mips,
    tiling flag), untile (Xenos 2D tiling, the XGUntileTextureLevel address formula) and swap 8-in-16 -> plain
    BC1/BC2/BC3/BC5. Check by writing DDS files and opening them. Low risk, well documented.
-2. **Textures -> FH2**: write PC-layout swatchbins (FH2 reads FH3 PC BCXT v0.0 textures natively, fh3port tex.py /
+2. **Textures -> FH2** - DONE 2026-10-29 (not yet loaded in game): `swatch.py` writes the PC-layout swatchbin FH2
+   loads linearly (BCXT 0.0 + HCXT header: GUID, size, mips, format id, sRGB at +2C/+30, mip list). It rebuilds 268 of
+   268 FH2-loaded FH3-port textures byte for byte. FH1 -> FH2 format ids: DXT1 0, DXT3 1, DXT5 2, DXT5A 3, DXN 5,
+   A8R8G8B8 13 (texels are B,G,R,A after the 8-in-32 swap). sRGB from the xds gamma sign bits. A whole FH1 car's 16
+   textures convert and read back identical; FH2's tex.py check finds nothing to fix. Thumbnails: FH1
+   `UI\Textures.zip Thumbnails\Thumbnail_<id>.xds` = one 768x288 A8R8G8B8 sheet with two views (3/4 front + side
+   rotated 90 deg) - FH2 needs separate Big/Small/B_ thumbnails, so they will be cropped when cars are installed.
+   Open: DXN channel order (360 ATI2 vs D3D11 BC5) - check on the first in-game normal map.
+   Originally planned: write PC-layout swatchbins (FH2 reads FH3 PC BCXT v0.0 textures natively, fh3port tex.py /
    README) - the atlases become car textures under `Textures\`.
 3. **Geometry reader** (main work): reverse the v5 `.carbin` from the FH1 xex (loader functions above): sections ->
    parts -> meshes -> vertex/index buffers (big-endian; packed types such as FLOAT16_4 / SHORT4N / DEC3N), part and

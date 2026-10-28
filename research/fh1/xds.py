@@ -3,7 +3,7 @@
 Layout: 52-byte big-endian header = D3D resource header (7 dwords: common type 3, ref count, fences, identifier,
 base/mip flush) + the Xenos GPU texture fetch constant (6 dwords), then the texture data (base level at 0, mips at
 mip_address * 4096). Fetch constant fields used (Xenia's xe_gpu_texture_fetch_t):
-  d0: type 2 bits, pitch (bits 22-30, in 32-texel units), tiled (bit 31)
+  d0: type 2 bits, sign X/Y/Z/W (bits 2-9, 3 = gamma), pitch (bits 22-30, in 32-texel units), tiled (bit 31)
   d1: format (bits 0-5), endian (bits 6-7: 1 = 8-in-16 swap), base address (bits 12-31, 4 KB units)
   d2: width - 1 (bits 0-12), height - 1 (bits 13-25)
   d4: mip_max_level (bits 6-9)
@@ -47,6 +47,8 @@ class Xds:
         self.name, self.bpb, self.block, self.fourcc = FORMATS[self.format]
         self.endian = (d1 >> 6) & 3
         self.tiled = bool(d0 >> 31)
+        # d0 bits 2-9: sign mode per channel X/Y/Z/W, 3 = gamma: colour textures sampled as sRGB
+        self.srgb = ((d0 >> 2) & 3) == 3
         self.width = (d2 & 0x1FFF) + 1
         self.height = ((d2 >> 13) & 0x1FFF) + 1
         self.mips = ((d4 >> 6) & 0xF) + 1 if d4 else 1
@@ -193,8 +195,9 @@ def _alpha_block(b):
 def decode(data, w, h, name):
     """Linear BC data -> RGBA uint8 array (h, w, 4)."""
     if name == "A8R8G8B8":
+        # after the byte swap the texels are little-endian 0xAARRGGBB words: B, G, R, A in memory
         a = np.frombuffer(data, np.uint8).reshape(h, w, 4)
-        return a[:, :, [1, 2, 3, 0]].copy()
+        return a[:, :, [2, 1, 0, 3]].copy()
     bpb = 8 if name in ("DXT1", "DXT5A") else 16
     bw, bh = max(1, (w + 3) // 4), max(1, (h + 3) // 4)
     b = np.frombuffer(data, np.uint8).reshape(-1, bpb)
@@ -260,7 +263,7 @@ def _enc_alpha(a):
 def encode(rgba, name):
     h, w = rgba.shape[:2]
     if name == "A8R8G8B8":
-        return rgba[:, :, [3, 0, 1, 2]].tobytes()
+        return rgba[:, :, [2, 1, 0, 3]].tobytes()
     bh, bw = (h + 3) // 4, (w + 3) // 4
     pad = np.zeros((bh * 4, bw * 4, 4), np.uint8)
     pad[:h, :w] = rgba
