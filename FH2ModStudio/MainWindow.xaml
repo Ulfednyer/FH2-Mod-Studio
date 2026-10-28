@@ -202,7 +202,7 @@
                         <TextBlock x:Name="StatusTxt" FontSize="11" Foreground="#636366" Margin="4,0,8,0"
                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Text="FH2 Mod Studio - Ready"/>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,0,8,0">
-                            <Border x:Name="GamePill" Style="{StaticResource StatusPill}" ToolTip="Is Forza Horizon 2 running in Azimuth?">
+                            <Border x:Name="GamePill" Style="{StaticResource StatusPill}" ToolTip="Is Forza Horizon 2 running in Azimuth?" MouseLeftButtonUp="GamePill_Click">
                                 <StackPanel Orientation="Horizontal">
                                     <Ellipse x:Name="GameDot" Width="7" Height="7" VerticalAlignment="Center" Margin="0,0,6,0"/>
                                     <TextBlock x:Name="GameTxt" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"/>

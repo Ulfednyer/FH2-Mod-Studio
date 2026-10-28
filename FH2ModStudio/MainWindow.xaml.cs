@@ -123,9 +123,15 @@ public partial class MainWindow : Window
 
     private void OnStatus(SessionStatus s)
     {
+        // not running: the pill is a shortcut to "Launch Azimuth" (same as the Home page button)
+        bool launchable = s.Game == GameState.NotRunning;
+        GamePill.Cursor = launchable ? Cursors.Hand : null;
+        GamePill.ToolTip = !launchable ? "Is Forza Horizon 2 running in Azimuth?"
+            : Settings.PathsValid ? "Click to launch Azimuth - mods load automatically"
+            : "Click to set up the Azimuth and game locations (Home page)";
         switch (s.Game)
         {
-            case GameState.NotRunning: Pill(GamePill, GameDot, GameTxt, Red, RedText, "Game not running"); break;
+            case GameState.NotRunning: Pill(GamePill, GameDot, GameTxt, Red, RedText, Settings.PathsValid ? "Game not running · Launch" : "Game not running"); break;
             case GameState.Launcher: Pill(GamePill, GameDot, GameTxt, Orange, OrangeText, "Azimuth launcher"); break;
             default: Pill(GamePill, GameDot, GameTxt, Green, GreenText, "In game"); break;
         }
@@ -151,6 +157,23 @@ public partial class MainWindow : Window
         dot.Fill = new SolidColorBrush(c);
         text.Foreground = new SolidColorBrush(textColor);
         text.Text = label;
+    }
+
+    private DateTime _launchedAt;
+
+    private void GamePill_Click(object sender, MouseButtonEventArgs e)
+    {
+        // a second click before the status poll sees Azimuth would start it twice
+        if (Session.Status.Game != GameState.NotRunning || DateTime.Now - _launchedAt < TimeSpan.FromSeconds(8)) return;
+        if (!Settings.PathsValid)
+        {
+            ShowPage("home");
+            SetStatus("Set the Azimuth and game locations under Setup first, then launch.");
+            return;
+        }
+        var error = Session.LaunchAzimuth();
+        if (error == null) _launchedAt = DateTime.Now;
+        SetStatus(error ?? "Starting Azimuth - mods will load automatically.");
     }
 
     private void HomeTab_Click(object sender, RoutedEventArgs e) => ShowPage("home");
