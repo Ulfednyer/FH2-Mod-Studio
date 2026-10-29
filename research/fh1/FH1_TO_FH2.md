@@ -148,6 +148,11 @@ AUD_R8GT_11 (id 2755) crashes when selected in the Autoshow:
    wrote (.., 1) / 1 there although it writes no Mrph; FH2 sets them only in models that have a Mrph blob (R8 Plus:
    506 no-morph meshes, all 0/0). Generator writes 0/0 now; research\fh1\morphfix.py repaired the 23 installed models.
    Found from the dump (r10 = 0x4D727068 'Mrph') - research\fh1\dmpstack.py <dmp> 140000000 reads minidumps without a debugger.
+3. After 2: car renders in the Autoshow list preview, but the 3D scene turns black in Buy Car / Color Select (UI and
+   FPS fine, no Azimuth error). Found: TEXCOORD0-3 declared R16G16_UNORM (dxgi 35) but written as half floats, and all
+   mesh UV transforms (Mesh >= 1.5 tail, (offset, scale, offset, scale) x5; uv = offset + unorm * scale) were 0 ->
+   every UV 0. Generator now writes UNORM16 + real transforms; research\fh1\uvfix.py repaired the 23 installed models.
+   Whether this was the black-screen cause is UNTESTED as of commit time.
 Run on every ported zip: research\fh3port\modlcounts.py, strict.py, fh3port carbin.py check, batch_port.check_car,
-research\fh1\refcheck.py, research\fh1\morphfix.py (no-op when clean).
+research\fh1\refcheck.py, vertcheck.py, morphfix.py, uvfix.py (the fixers are no-ops when clean).
 
