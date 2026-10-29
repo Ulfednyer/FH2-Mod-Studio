@@ -207,8 +207,33 @@ def make_vlay_blobs():
     return b_main, b_shadow
 
 
-def make_verb_blobs(positions: np.ndarray, normals: np.ndarray, tangents: np.ndarray, uv0: np.ndarray, uv1: np.ndarray):
-    """Creates VerB -1 (Positions) and VerB 0 (Attributes)."""
+def uv_transform(uv: np.ndarray):
+    """(offset, scale) per axis so that uv = offset + unorm16 * scale covers the channel's range."""
+    if len(uv) == 0:
+        return np.zeros(2), np.ones(2)
+    lo, hi = uv.min(axis=0).astype(np.float64), uv.max(axis=0).astype(np.float64)
+    scale = hi - lo
+    scale[scale < 1e-8] = 1.0
+    return lo, scale
+
+
+def encode_uv(uv: np.ndarray, xf) -> np.ndarray:
+    off, scale = xf
+    return np.clip(np.round((uv - off) / scale * 65535.0), 0, 65535).astype(np.uint16)
+
+
+def uv_tail(xfs) -> bytes:
+    """Mesh >= 1.5 tail: 5 UV transforms (offset.x, scale.x, offset.y, scale.y), one per TEXCOORD0..4. The layout declares
+    TEXCOORDs R16G16_UNORM (dxgi 35), so FH2 computes uv = offset + unorm * scale; zero scales made every UV 0."""
+    out = b""
+    for k in range(5):
+        off, scale = xfs[k] if k < len(xfs) else (np.zeros(2), np.ones(2))
+        out += struct.pack("<4f", off[0], scale[0], off[1], scale[1])
+    return out
+
+
+def make_verb_blobs(positions: np.ndarray, normals: np.ndarray, tangents: np.ndarray, uv0: np.ndarray, uv1: np.ndarray, uv_xfs=None):
+    """Creates VerB -1 (Positions) and VerB 0 (Attributes). uv_xfs: [(offset, scale)] for TEXCOORD0/1 (uv_transform)."""
     n = len(positions)
 
     # VerB -1: Positions (stride 12, dxgi 6)
@@ -230,18 +255,17 @@ def make_verb_blobs(positions: np.ndarray, normals: np.ndarray, tangents: np.nda
     tan1_16[:, :3] = bitan
     tan1_16[:, 3] = 1.0
 
-    uv0_16 = uv0.astype(np.float16)
-    uv1_16 = uv1.astype(np.float16)
-    zeros16 = np.zeros((n, 2), dtype=np.float16)
+    if uv_xfs is None:
+        uv_xfs = [uv_transform(uv0), uv_transform(uv1)]
 
-    attr = np.empty((n, 20), dtype=np.float16)
+    attr = np.zeros((n, 20), dtype=np.float16)
     attr[:, 0:4] = norm16
-    attr[:, 4:6] = uv0_16
-    attr[:, 6:8] = uv1_16
-    attr[:, 8:10] = zeros16
-    attr[:, 10:12] = zeros16
     attr[:, 12:16] = tan0_16
     attr[:, 16:20] = tan1_16
+    # TEXCOORD0..3 are R16G16_UNORM: raw u16 (TEXCOORD2/3 stay 0 with identity transforms)
+    bits = attr.view(np.uint16)
+    bits[:, 4:6] = encode_uv(uv0, uv_xfs[0])
+    bits[:, 6:8] = encode_uv(uv1, uv_xfs[1])
 
     attr_data = bytearray(struct.pack("<IIHHI", n, n * 40, 40, 7, 10))
     attr_data += attr.tobytes()
@@ -258,7 +282,7 @@ def make_indb_blob(indices: np.ndarray):
     return bundle.Blob(b"BdnI", (1, 0), [(b"  dI", 0, struct.pack("<i", 0))], bytes(ind_data))
 
 
-def make_mesh_blob(name: str, mat_idx: int, start_idx: int, idx_count: int, bbox: np.ndarray, is_shadow: bool = False, unique_verts: int = 0):
+def make_mesh_blob(name: str, mat_idx: int, start_idx: int, idx_count: int, bbox: np.ndarray, is_shadow: bool = False, unique_verts: int = 0, uv_xfs=()):
     """Creates a Mesh v1.7 blob."""
     tri_count = idx_count // 3
     radius = float(np.linalg.norm((bbox[3:6] - bbox[0:3]) / 2.0))
@@ -297,10 +321,9 @@ def make_mesh_blob(name: str, mat_idx: int, start_idx: int, idx_count: int, bbox
     m_data += struct.pack("<I", 0)       # v3=0
 
     if is_shadow:
-        m_data += bytes(80)              # 80 zeros for shadow
+        m_data += bytes(80)              # FH2's shadow meshes have all-zero UV transforms
     else:
-        # 64 bytes zeros followed by standard [0.0, 1.0, 0.0, 1.0] UV bounds
-        m_data += bytes(64) + struct.pack("<4f", 0.0, 1.0, 0.0, 1.0)
+        m_data += uv_tail(uv_xfs)
 
     b_meta = [
         (b"emaN", 0, name.encode("latin1")),
@@ -359,13 +382,14 @@ def convert_part_to_modelbin(part: carbin.FH1Part, donor_skel: Optional[bundle.B
             mat_to_id[fh2_mat] = mat_id
             blobs.append(make_mati_blob(mat_id, fh2_mat))
 
-    # Mesh blobs
+    # Mesh blobs (all share one vertex buffer, so one UV transform per channel)
+    uv_xfs = [uv_transform(part.uv0), uv_transform(part.uv1)]
     for _, fh2_mat, start_i, cnt_i in sub_mesh_infos:
         mat_id = mat_to_id[fh2_mat]
         m_name = f"{part.name}_{lod_name}"
         sub_idx = all_indices[start_i:start_i + cnt_i]
         u_verts = len(np.unique(sub_idx))
-        blobs.append(make_mesh_blob(m_name, mat_id, start_i, cnt_i, bbox, is_shadow=False, unique_verts=u_verts))
+        blobs.append(make_mesh_blob(m_name, mat_id, start_i, cnt_i, bbox, is_shadow=False, unique_verts=u_verts, uv_xfs=uv_xfs))
 
     # Shadow mesh blob
     blobs.append(make_mesh_blob("Shadow", -1, 0, len(all_indices), bbox, is_shadow=True, unique_verts=n_verts))
@@ -379,7 +403,7 @@ def convert_part_to_modelbin(part: carbin.FH1Part, donor_skel: Optional[bundle.B
     blobs.append(v_sh)
 
     # VerB blobs
-    b_pos, b_attr = make_verb_blobs(part.positions, part.normals, part.tangents, part.uv0, part.uv1)
+    b_pos, b_attr = make_verb_blobs(part.positions, part.normals, part.tangents, part.uv0, part.uv1, uv_xfs)
     blobs.append(b_pos)
     blobs.append(b_attr)
 
