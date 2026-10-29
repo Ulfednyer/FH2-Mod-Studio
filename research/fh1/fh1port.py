@@ -59,6 +59,13 @@ def rename_scene(data: bytes, new_car_id: int, old_media: str, new_media: str) -
     old_cid = r.u32()
     out += struct.pack("<I", new_car_id)
 
+    def remap_row(i):
+        """Upgrade row ids (List_Upgrade*.Id = <car id>NNN) follow the database rows, which the port renumbers from
+        the donor's car id to the new one. Left at the donor's ids, FH2 found no carbin entry for the new car's stock
+        body/wing/bumper rows and the 3D car never loaded (Color Select stayed black)."""
+        s, o = str(i), str(old_cid)
+        return int(str(new_car_id) + s[len(o):]) if i != 0xFFFFFFFF and s.startswith(o) and len(s) == len(o) + 3 else i
+
     def copy_str():
         nonlocal out
         s = r.s()
@@ -172,7 +179,9 @@ def rename_scene(data: bytes, new_car_id: int, old_media: str, new_media: str) -
         for _ in range(n_upg):
             uv = r.u16()
             out += struct.pack("<H", uv)
-            out += r.take(11)
+            lvl_stock = r.take(2)
+            row_id, body_id = r.u32(), r.u32()
+            out += lvl_stock + struct.pack("<II", remap_row(row_id), remap_row(body_id)) + r.take(1)
             if uv < 3:
                 nm = r.count()
                 out += struct.pack("<I", nm)
@@ -185,7 +194,8 @@ def rename_scene(data: bytes, new_car_id: int, old_media: str, new_media: str) -
             out += struct.pack("<I", n_extra)
             for _ in range(n_extra):
                 k = r.count()
-                out += struct.pack("<I", k) + r.take(k * 4)
+                ids = struct.unpack("<%dI" % k, r.take(k * 4))
+                out += struct.pack("<I", k) + struct.pack("<%dI" % k, *(remap_row(i) for i in ids))
                 copy_model()
 
     if r.p < len(r.d):

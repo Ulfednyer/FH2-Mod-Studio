@@ -157,7 +157,11 @@ AUD_R8GT_11 (id 2755) crashes when selected in the Autoshow:
    fh1port.rename_scene renamed the donor in EVERY carbin string, including the shared library wheel AO ->
    _library\textures\libraryao\wheels\aud_r8gt_11_wheellf_ao.swatchbin, which does not exist (4 refs). Shared
    cars\_library paths now keep the donor's name; research\fh1\aopathfix.py repaired the installed carbin.
-   UNTESTED in game as of commit time.
+   Still black. research\fh1\donorswap.py test with the donor's 23 original models: still black -> not the models.
+   Then found: the carbin's upgrade row ids (upgrade rowId/bodyRowId + v3 model tags) stayed the donor's
+   (2010000/2010001) while fh1port renumbers the database rows to the new car id (2755000/2755001): FH2 finds no
+   carbin entry for the car's stock body/wing/bumper rows. rename_scene now remaps <old id>NNN -> <new id>NNN; the
+   installed carbin was rebuilt with it (only those 16 ids differ). UNTESTED in game as of commit time.
 Run on every ported zip: research\fh3port\modlcounts.py, strict.py, fh3port carbin.py check, batch_port.check_car,
 research\fh1\refcheck.py, vertcheck.py, morphfix.py, uvfix.py (the fixers are no-ops when clean).
 
