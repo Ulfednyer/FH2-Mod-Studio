@@ -73,9 +73,23 @@ Reventon Roadster, Honda S2000 / Integra R / NSX-R GT, Mazda RX-8, VW Corrado, L
    Open: DXN channel order (360 ATI2 vs D3D11 BC5) - check on the first in-game normal map.
    Originally planned: write PC-layout swatchbins (FH2 reads FH3 PC BCXT v0.0 textures natively, fh3port tex.py /
    README) - the atlases become car textures under `Textures\`.
-3. **Geometry reader** (main work): reverse the v5 `.carbin` from the FH1 xex (loader functions above): sections ->
-   parts -> meshes -> vertex/index buffers (big-endian; packed types such as FLOAT16_4 / SHORT4N / DEC3N), part and
-   shader names, LOD sets, transforms. Validate by exporting OBJ and rendering (`research\fh3port\render.py`).
+3. **Geometry reader** - DONE 2026-10-29: `carbin.py` reads FH1 / FM4 Xbox 360 `.carbin` files (v5 whole-car LOD0 and
+   cockpit models, v1 caliper and rotor models). Decodes:
+   - Parts hierarchy: 22 distinct car parts in LOD0 (`body`, `bumperFa`/`bumperFrace`, `bumperRa`, `winga`/`wingrace`,
+     `skirtLa`/`skirtRa`, `trunk`, `undercarriagea`, `glass*`, `taillight*`, `exhaust*`, `wheel`), 23 parts in cockpit
+     (`seatL`/`seatR`, `steering_wheel`, `cagerace`, `interior`, gauges, mirrors...).
+   - Bounding boxes: tag 5 record with center (3f), min (-extent 3f), max (+extent 3f), 1.0 (float).
+   - Meshes and shader slots: named material slots per mesh (`body`, `carbon_fiber`, `chrome`, `rubber_trim`,
+     `plastic2`, `black`, `frame`, `detail_glass_red`, `weatherstrip`, `emblem`...).
+   - Index buffers: triangle strips with restart markers (`0xFFFF` for 16-bit, `0x00FFFFFF` for 32-bit).
+   - 28-byte vertex buffer:
+       * bytes 0..4:   UV0 texture atlas UV (`USHORT2N` in [0, 1])
+       * bytes 4..8:   UV1 livery / AO UV (`USHORT2N` in [0, 1])
+       * bytes 8..16:  Position (`SHORT4N`, `xyz = center + q[:3] * extent` in meters)
+       * bytes 16..20: Color / AO tint (`D3DCOLOR` 4x uint8)
+       * bytes 20..28: QTangent (`SHORT4N` unit quaternion -> orthonormal unit Normal and Tangent)
+   - Verified on `AUD_R8GT_11`: 113,328 vertices and 124,829 triangles across 22 parts; cockpit with 62,724 vertices
+     and 71,969 triangles across 23 parts. Full 3D OBJ export (16.8 MB) and multi-view shaded PNG rendering verified.
 4. **Geometry writer**: build FH2 per-part `.modelbin`s with fh3port's existing writers (`bundle.py`, `geom.py`
    layouts, `vlayfix` to the FH2 shader variants) and an FH2 scene `.carbin` (parts, upgradable parts by name:
    `bumperFa`/`bumperFrace` -> bumper part 34 rows, `winga`/`wingrace` -> wing 9 ...), skeleton from an FH2 donor
