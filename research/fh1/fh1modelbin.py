@@ -3,6 +3,7 @@ FH1 -> FH2 Modelbin Generator.
 Converts FH1 / FM4 Xbox 360 carbin geometry into native FH2 burG 1.0 .modelbin bundles.
 """
 
+import copy
 import os
 import struct
 import sys
@@ -232,8 +233,27 @@ def uv_tail(xfs) -> bytes:
     return out
 
 
-def make_verb_blobs(positions: np.ndarray, normals: np.ndarray, tangents: np.ndarray, uv0: np.ndarray, uv1: np.ndarray, uv_xfs=None):
-    """Creates VerB -1 (Positions) and VerB 0 (Attributes). uv_xfs: [(offset, scale)] for TEXCOORD0/1 (uv_transform)."""
+def to_fh2_axes(part: carbin.FH1Part) -> carbin.FH1Part:
+    """FH1 cars face -z (right-handed), FH2 cars +z (left-handed; x = right in both): the donor's front bumper spans
+    z 1.43..2.23, FH1's -2.22..-1.43. Mirror z of positions, normals and tangents and reverse the triangle winding;
+    unconverted, every FH1 part sat back to front in the donor's car."""
+    flip = np.array([1.0, 1.0, -1.0])
+    p = copy.copy(part)
+    p.positions = part.positions * flip
+    p.normals = part.normals.copy()
+    p.normals[:, 2] *= -1
+    p.tangents = part.tangents.copy()
+    p.tangents[:, 2] *= -1
+    p.origin = part.origin * flip
+    p.min_box = np.array([part.min_box[0], part.min_box[1], -part.max_box[2]])
+    p.max_box = np.array([part.max_box[0], part.max_box[1], -part.min_box[2]])
+    p.meshes = [carbin.FH1Mesh(m.shader, m.triangles[:, [0, 2, 1]], m.raw_indices, m.index_size) for m in part.meshes]
+    return p
+
+
+def make_verb_blobs(positions: np.ndarray, normals: np.ndarray, tangents: np.ndarray, uv0: np.ndarray, uv1: np.ndarray, uv_xfs=None, bitan_sign: float = 1.0):
+    """Creates VerB -1 (Positions) and VerB 0 (Attributes). uv_xfs: [(offset, scale)] for TEXCOORD0/1 (uv_transform).
+    bitan_sign -1 for mirrored geometry: cross(n, t) of mirrored vectors is minus the mirrored bitangent."""
     n = len(positions)
 
     # VerB -1: Positions (stride 12, dxgi 6)
@@ -250,7 +270,7 @@ def make_verb_blobs(positions: np.ndarray, normals: np.ndarray, tangents: np.nda
     tan0_16[:, 3] = 1.0
 
     # Bitangent: normal x tangent
-    bitan = np.cross(normals[:, :3], tangents[:, :3])
+    bitan = np.cross(normals[:, :3], tangents[:, :3]) * bitan_sign
     tan1_16 = np.zeros((n, 4), dtype=np.float16)
     tan1_16[:, :3] = bitan
     tan1_16[:, 3] = 1.0
@@ -347,6 +367,7 @@ def convert_part_to_modelbin(part: carbin.FH1Part, donor_skel: Optional[bundle.B
     if n_verts == 0:
         raise ValueError(f"Part {part.name} has 0 vertices")
 
+    part = to_fh2_axes(part)
     all_indices = []
     sub_mesh_infos = []
 
@@ -403,7 +424,7 @@ def convert_part_to_modelbin(part: carbin.FH1Part, donor_skel: Optional[bundle.B
     blobs.append(v_sh)
 
     # VerB blobs
-    b_pos, b_attr = make_verb_blobs(part.positions, part.normals, part.tangents, part.uv0, part.uv1, uv_xfs)
+    b_pos, b_attr = make_verb_blobs(part.positions, part.normals, part.tangents, part.uv0, part.uv1, uv_xfs, bitan_sign=-1.0)
     blobs.append(b_pos)
     blobs.append(b_attr)
 

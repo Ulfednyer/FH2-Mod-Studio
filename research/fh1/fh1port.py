@@ -204,6 +204,30 @@ def rename_scene(data: bytes, new_car_id: int, old_media: str, new_media: str) -
     return bytes(out)
 
 
+# Donor (AUD_R8Plus_13, 2nd-generation R8) models the FH1 shell already covers or a 1st-generation R8 doesn't have:
+# its hood panel and liners (hood bone), front fender liners, door handle/jambs, roof brake light and the inner faces of
+# its glass. Visible, they put a second car's panels through the FH1 body (black patches on the hood).
+DONOR_HIDE = {
+    "hoodbadge_a", "hoodliner_a", "hoodliner_a__slod", "fenders_a", "doorhandlelf_a", "doorjamblf_a",
+    "doorjamblf_a__slod", "glasschmsl_a", "tailightchmsl_a", "glassfint_a", "glasslrint_a", "glassrrint_a",
+    "glassrint_a",
+}
+
+
+def hide_models(cb: bytes, names) -> bytes:
+    """Sets the LOD mask of the carbin model entries whose file name (no extension) is in names to 0: drawn at no LOD."""
+    r = scene_carbin.parse(cb)
+    out = bytearray(cb)
+    hidden = []
+    for off, path in r.lod_masks:
+        stem = path.replace("/", "\\").split("\\")[-1].lower().rsplit(".", 1)[0]
+        if stem in names:
+            struct.pack_into("<H", out, off, 0)
+            hidden.append(stem)
+    print(f"      Hid {len(hidden)} donor models: {', '.join(sorted(set(hidden)))}")
+    return bytes(out)
+
+
 def rewrite_lights_bin(data: bytes, old_media: str, new_media: str) -> bytes:
     """Updates length-prefixed model paths in Lights.bin."""
     old_b = old_media.lower().encode("latin1")
@@ -270,11 +294,16 @@ def build_car_archive(fh1_zip_path: str, donor_zip_path: str, out_zip_path: str,
     modelbin_replacements = {}
 
     def add_rep(pname: str, model_rel_path: str, source_model=m_lod0):
-        if pname in source_model.parts:
-            part = source_model.parts[pname]
-            mb = fh1modelbin.convert_part_to_modelbin(part, skel_blob)
-            modelbin_replacements[model_rel_path.lower()] = mb
-            print(f"      Converted part '{pname:15s}' -> {model_rel_path} ({len(mb):,} bytes)")
+        # FH1 keeps the windshield, door windows, headlights, mirrors and hood only in the cockpit carbin: looking in
+        # lod0 alone silently kept the donor's (other-generation) parts
+        src = next((m for m in (source_model, m_lod0, m_cockpit) if pname in m.parts), None)
+        if src is None:
+            print(f"      WARNING: FH1 part '{pname}' not found - {model_rel_path} stays the donor's")
+            return
+        part = src.parts[pname]
+        mb = fh1modelbin.convert_part_to_modelbin(part, skel_blob)
+        modelbin_replacements[model_rel_path.lower()] = mb
+        print(f"      Converted part '{pname:15s}' -> {model_rel_path} ({len(mb):,} bytes)")
 
     add_rep("body", "scene/_library/scene/R8/Scene/Exterior/Platform/body_a.modelbin", m_lod0)
     add_rep("bumperFa", "scene/Exterior/BumperF/bumperF_a.modelbin", m_lod0)
@@ -320,6 +349,13 @@ def build_car_archive(fh1_zip_path: str, donor_zip_path: str, out_zip_path: str,
     add_rep("hooda", "scene/_library/scene/R8/Scene/Exterior/Hood/hood_a.modelbin", m_cockpit)
     add_rep("interior", "scene/_library/scene/R8/Scene/Interior/InteriorLOD/Interior_a.modelbin", m_cockpit)
     add_rep("cagerace", "scene/_library/scene/R8/Scene/Interior/Floor/rollCage_a.modelbin", m_cockpit)
+    # FH1's body shell includes the doors; the donor's door model (doors + side mirrors, identity transform) is
+    # replaced by FH1's two side mirrors (mirrorBaseL_a is only the interior mirror mount)
+    if "mirrorL" in m_cockpit.parts and "mirrorR" in m_cockpit.parts:
+        comb_mi = fh1modelbin.combine_parts([m_cockpit.parts["mirrorL"], m_cockpit.parts["mirrorR"]], "mirror_a")
+        modelbin_replacements["scene/_library/scene/r8/scene/exterior/doors/doorlf_a.modelbin"] = \
+            fh1modelbin.convert_part_to_modelbin(comb_mi, skel_blob)
+        print("      Converted combined mirrors -> scene/_library/scene/R8/Scene/Exterior/Doors/doorLF_a.modelbin")
 
     # Convert all XDS textures from FH1 car zip
     xds_swatches = {}
@@ -347,7 +383,7 @@ def build_car_archive(fh1_zip_path: str, donor_zip_path: str, out_zip_path: str,
 
             # 1) Scene carbin
             if name_lower == f"{donor_car_name.lower()}.carbin":
-                new_scene_bytes = rename_scene(data, new_car_id, donor_car_name, fh1_car_name)
+                new_scene_bytes = hide_models(rename_scene(data, new_car_id, donor_car_name, fh1_car_name), DONOR_HIDE)
                 out_name = f"{fh1_car_name}.carbin"
                 out_entries.append(fh3port._entry_from_bytes(out_name, new_scene_bytes))
                 print(f"      Wrote renamed scene carbin: {out_name}")
