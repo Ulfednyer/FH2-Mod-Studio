@@ -135,3 +135,15 @@ library materials and donor wheels.
 FH1 was built on the FM4 engine, so the same formats are expected in FM4 (Xbox 360): LZX zips, carbin v5, xds,
 ShaderSettings XML (to verify on FM4 files when available). Neither ForzaTechStudio nor fmnext/cli has anything on
 FM4. A working FH1 reader would likely cover FM4 cars too.
+
+## In-game status (2026-10-29)
+
+AUD_R8GT_11 (id 2755) crashes when selected in the Autoshow:
+1. FIXED: game+0xfd841f - Modl header counts were written as (meshes, 1, 1, 1); FH2 sizes its buffer/layout/material
+   arrays by them. fh1modelbin now calls fh3port vlayfix.update_modl_counts; fh1port runs fh3port.fix_vertex_layouts
+   (3 meshes lacked shader inputs). Installed zip repaired (journal backup).
+2. OPEN: game+0x13e7398 reading 0xc = Blob_OpenDataStream (0x1413E7360) called with a NULL blob - a model asks for a
+   blob id that is not in its file. Check every Mesh's VerB/IndB/VLay/MatI references against the blobs of each
+   fh1modelbin (and donor models), dump amzimuth\data\logs61029T084343-476-10296.dmp for the caller.
+Run on every ported zip: researchh3port\modlcounts.py, strict.py, fh3port carbin.py check, batch_port.check_car.
+
