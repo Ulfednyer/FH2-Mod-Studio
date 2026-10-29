@@ -90,14 +90,37 @@ Reventon Roadster, Honda S2000 / Integra R / NSX-R GT, Mazda RX-8, VW Corrado, L
        * bytes 20..28: QTangent (`SHORT4N` unit quaternion -> orthonormal unit Normal and Tangent)
    - Verified on `AUD_R8GT_11`: 113,328 vertices and 124,829 triangles across 22 parts; cockpit with 62,724 vertices
      and 71,969 triangles across 23 parts. Full 3D OBJ export (16.8 MB) and multi-view shaded PNG rendering verified.
-4. **Geometry writer**: build FH2 per-part `.modelbin`s with fh3port's existing writers (`bundle.py`, `geom.py`
-   layouts, `vlayfix` to the FH2 shader variants) and an FH2 scene `.carbin` (parts, upgradable parts by name:
-   `bumperFa`/`bumperFrace` -> bumper part 34 rows, `winga`/`wingrace` -> wing 9 ...), skeleton from an FH2 donor
-   car of similar size.
-5. **Materials**: FH1 shader slot -> FH2 library material by name (`body` -> carpaint with paint groups, `glass` ->
-   car glass, `chrome` -> chrome_polished, `carbon_fiber`, `rubber_trim` ...), atlas textures as DiffuseATexture,
-   values from ShaderSettings.xml (same idea as matconv's name scoring + parameter renames).
-6. **Database**: reuse `Porter` with FH1's gamedb as source (column map for the ~19 differing tables), engine sound
+4. **Geometry writer** - DONE 2026-10-29: `fh1modelbin.py` builds native FH2 per-part `burG 1.0` `.modelbin` bundles
+   from FH1 geometry:
+   - Skel (v0.0) preserved from donor car.
+   - MatI (v1.0) with exact library material references (`carpaint`, `carbonfiber_001`, `blkplastic_mgl`, `chrome_polished`,
+     `gls_clear`, `gls_red`, `gls_amber`, `reflector_001`, etc.) verified 100% against `Mount\media\cars\_library\materials.zip`.
+   - Mesh (v1.7) blocks for Main pass and Shadow pass.
+   - IndB (v1.0) with DXGI format 42 (R32_UINT).
+   - VLay (v1.1) dual vertex layouts: Main (Position slot 0, Normal/UV0-3/Tangent slot 1) and Shadow (Position slot 0).
+   - VerB (v1.0) dual streams: VerB -1 (Positions float32 stride 12) and VerB 0 (Attributes float16 stride 32).
+   - Modl (v1.1) model metadata with part bounding boxes.
+   - All generated modelbins pass `geom.read_bundle()` byte-for-byte with 0 errors.
+5. **Materials & Scene Rewriter** - DONE 2026-10-29:
+   - Scene carbin rewriter `rename_scene()` recursively traverses FH2 scene carbin, re-points all internal model paths,
+     updates CarId to new ID (2755), and passes `scene_carbin.scene()` validation 100%.
+   - `rewrite_lights_bin()` updates length-prefixed headlight/taillight model paths in `Lights.bin`.
+   - `MATERIAL_MAP` covers all 72 FH1 material slots mapped directly to valid FH2 library materialbins.
+6. **Database & Strings** - DONE 2026-10-29:
+   - `inject_database()` in `fh1port.py` inserts new car ID into `Data_Car` with authentic FH1 physics, curb weight,
+     aero downforce, gearing, and performance ratings.
+   - Inserts `CameraOverrides` (cockpit, hood, follow cams), `CarPartPositions` (lights, steering wheel, driver POV),
+     `Combo_Colors` (factory paint codes), and `Data_CarBody` (accurate chassis dimensions and bounding box).
+   - Clones and remaps all 13 physics and upgrade tables (`List_Upgrade*`, `List_AntiSwayPhysics`, `List_SpringDamperPhysics`).
+   - `inject_stringtables()` parses FH1 big-endian UTF-16-BE string tables and injects localized names across all 18 FH2 languages
+     in `Mount\media\stripped\stringtables\<LANG>.zip`.
+7. **End-to-End Porter & Verification** - DONE 2026-10-29:
+   - Automated CLI pipeline: `python fh1port.py port <FH1_CAR> <DONOR_CAR> [--id <NEW_ID>]`.
+   - Verified on pilot car `AUD_R8GT_11` (donor: `AUD_R8Plus_13`, ID: `2755`):
+     * Created `Mount\media\cars\AUD_R8GT_11.zip` with 339 entries (native central-directory extra field 0x1123).
+     * Registered in `zipmanifest.xml` and `hash.manifest` (`manifest-check` passed with exact match).
+     * Database verification (`dbcheck.py AUD_R8GT_11`): **0 errors, 0 warnings**.
+
    borrowed from an FH2 engine as for FH3 cars.
 7. **Wheels, brakes, physics, UI**: FH1 wheels/brakes carbins -> FH2 wheel modelbins (or FH2 donor rims first);
    physicsdefinition.bin version check (else donor + scale, see physdef.py); thumbnails from FH1 UI xds.

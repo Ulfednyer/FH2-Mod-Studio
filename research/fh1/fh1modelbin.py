@@ -1,0 +1,359 @@
+"""
+FH1 -> FH2 Modelbin Generator.
+Converts FH1 / FM4 Xbox 360 carbin geometry into native FH2 burG 1.0 .modelbin bundles.
+"""
+
+import os
+import struct
+import sys
+from typing import Dict, List, Optional, Tuple
+
+import numpy as np
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_FH3PORT = os.path.normpath(os.path.join(_HERE, "..", "..", "fh3port"))
+if _FH3PORT not in sys.path:
+    sys.path.insert(0, _FH3PORT)
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+
+import bundle
+import geom
+import fh1carbin as carbin
+
+MATERIAL_MAP = {
+    "carpaint": "carpaint",
+    "body": "carpaint",
+    "body_2": "carpaint",
+    "carbon_fiber": "carbonfiber_001",
+    "carbonfiber": "carbonfiber_001",
+    "chrome": "chrome_polished",
+    "chrome_satin": "chrome_satin",
+    "chrome_satin001": "chrome_satin",
+    "black": "blkplastic_mgl",
+    "black_matte": "blkplastic_mgl",
+    "matte_black": "blkplastic_mgl",
+    "plastic": "blkplastic_mgl",
+    "plastic2": "blkplastic_mgl",
+    "bump_plastic": "blkplastic_mgl",
+    "grilleplastic": "grilleplastic_002",
+    "grille1": "grilleplastic_002",
+    "grille1_alpha": "grilleplastic_002",
+    "rubber": "rubber_smooth",
+    "rubber_trim": "rubber_smooth",
+    "weatherstrip": "blkweatherstrip_001",
+    "glass": "gls_tint_001",
+    "black_glass": "blackglass",
+    "window": "gls_window",
+    "lights_glass": "gls_clear",
+    "tail_light": "gls_red",
+    "tail_light_lod0": "gls_red",
+    "taillight2s": "gls_red",
+    "reverse_light": "gls_clear",
+    "reverse_light_lod0": "gls_clear",
+    "textured_reflector": "reflector_001",
+    "reflector": "reflector_001",
+    "detail_glass_red": "gls_red",
+    "head_light": "gls_clear",
+    "oldhead": "gls_clear",
+    "fullbeam": "gls_lightbulb",
+    "xenonhead": "gls_projector",
+    "drlwhite": "gls_ledbulb_round",
+    "indicator_left": "gls_amber",
+    "indicator_right": "gls_amber",
+    "drlorange": "gls_amber",
+    "steel": "steel",
+    "metal": "steel",
+    "frame": "frame",
+    "leather": "blkleather_bump_mgl",
+    "bump_leather": "blkleather_bump_mgl",
+    "cloth": "blkleather_bump_lgl",
+    "headliner": "blkleather_bump_lgl",
+    "badge": "badges/acu_emblem_001",
+    "emblem": "badges/acu_emblem_001",
+    "wood": "aluminum_machined",
+    "solid": "steel",
+    "mirrorleft": "gls_wingmirror_001",
+    "mirrorright": "gls_wingmirror_001",
+    "mirrormiddle": "gls_wingmirror_001",
+    "undercarriage": "blkplastic_mgl",
+    "bottom": "blkplastic_mgl",
+    "misc": "blkplastic_mgl",
+    "matte_colors": "blkplastic_mgl",
+    "race_kit_red": "carpaint",
+    "numplate": "carpaint",
+    "inner_rim": "aluminum_machined",
+    "outer_rim": "chrome_polished",
+    "rim": "aluminum_machined",
+    "wheel_black": "blkplastic_mgl",
+    "blur_rim": "wheel_blur",
+    "blur_lip": "wheel_blur",
+    "bump_stitching": "stitch_001",
+    "gauge_emissive": "blkplastic_mgl",
+    "gauge_needle": "gls_red",
+    "z_gauge_emissive_alpha": "blkplastic_mgl",
+    "digital_gauge": "blkplastic_mgl",
+    "mottled": "blkplastic_mgl",
+}
+
+
+def map_material(fh1_mat: str) -> str:
+    mat = fh1_mat.lower().strip()
+    return MATERIAL_MAP.get(mat, "carpaint")
+
+
+def combine_parts(parts: List[carbin.FH1Part], new_name: str) -> carbin.FH1Part:
+    """Combines multiple FH1Part objects into a single FH1Part."""
+    if not parts:
+        raise ValueError("No parts to combine")
+    first = parts[0]
+    combined = carbin.FH1Part(new_name, first.origin, first.min_box.copy(), first.max_box.copy())
+
+    pos_list = []
+    norm_list = []
+    tan_list = []
+    uv0_list = []
+    uv1_list = []
+    v_offset = 0
+
+    all_min = []
+    all_max = []
+
+    for p in parts:
+        pos_list.append(p.positions)
+        norm_list.append(p.normals)
+        tan_list.append(p.tangents)
+        uv0_list.append(p.uv0)
+        uv1_list.append(p.uv1)
+        all_min.append(p.origin + p.min_box)
+        all_max.append(p.origin + p.max_box)
+
+        for m in p.meshes:
+            if m.triangle_count == 0:
+                continue
+            new_tris = m.triangles + v_offset
+            combined.meshes.append(carbin.FH1Mesh(m.shader, new_tris, m.raw_indices, m.index_size))
+
+        v_offset += len(p.positions)
+
+    combined.positions = np.concatenate(pos_list, axis=0)
+    combined.normals = np.concatenate(norm_list, axis=0)
+    combined.tangents = np.concatenate(tan_list, axis=0)
+    combined.uv0 = np.concatenate(uv0_list, axis=0)
+    combined.uv1 = np.concatenate(uv1_list, axis=0)
+
+    glb_min = np.min(all_min, axis=0)
+    glb_max = np.max(all_max, axis=0)
+    combined.origin = (glb_min + glb_max) / 2.0
+    combined.min_box = glb_min - combined.origin
+    combined.max_box = glb_max - combined.origin
+
+    return combined
+
+
+def make_mati_blob(mat_id: int, mat_name: str) -> bundle.Blob:
+    """Creates an FH2 MatI blob referencing a library material."""
+    if mat_name.startswith("badges/"):
+        rel_path = f"Game:\\Media\\cars\\_library\\materials\\{mat_name}.materialbin"
+    else:
+        rel_path = f"Game:\\Media\\cars\\_library\\materials\\basematerials\\{mat_name}.materialbin"
+    mati_data = bytes([len(rel_path)]) + rel_path.encode("latin1")
+
+    b_mati = bundle.Blob(b"ITAM", (1, 0), [(b"emaN", 0, mat_name.encode("latin1")), (b"TSTA", 1, b"\x00")], mati_data)
+    b_mtpr = bundle.Blob(b"RPTM", (2, 0), [], b"\x00" * 13)
+    inner_data = bundle.serialize([b_mati, b_mtpr])
+
+    meta_name = mat_name.encode("latin1")
+    meta_id = struct.pack("<i", mat_id)
+    return bundle.Blob(b"ItaM", (1, 0), [(b"emaN", 0, meta_name), (b"  dI", 0, meta_id)], inner_data)
+
+
+def make_vlay_blobs():
+    """Returns (VLay_main, VLay_shadow)."""
+    sems = ["POSITION", "NORMAL", "TEXCOORD", "TANGENT"]
+    res = bytearray(struct.pack("<H", len(sems)))
+    for s in sems:
+        res += struct.pack("<I", len(s)) + s.encode("latin1")
+
+    elements = [
+        (0, 0, 0, 6, 0, 0, 3),    # POSITION slot 0
+        (1, 0, 1, 10, 0, 0, 9),   # NORMAL slot 1, off 0
+        (2, 0, 1, 35, 8, 0, 46),  # TEXCOORD0 slot 1, off 8
+        (2, 1, 1, 35, 12, 0, 46), # TEXCOORD1 slot 1, off 12
+        (2, 2, 1, 35, 16, 0, 46), # TEXCOORD2 slot 1, off 16
+        (2, 3, 1, 35, 20, 0, 46), # TEXCOORD3 slot 1, off 20
+        (3, 1, 1, 10, 24, 0, 9),  # TANGENT1 slot 1, off 24
+    ]
+    res += struct.pack("<H", len(elements))
+    for el in elements:
+        res += struct.pack("<HHIIiI", el[0], el[1], el[2], el[3], el[4], el[5])
+    for el in elements:
+        res += struct.pack("<I", el[6])
+    mask = (1 << 0) | (1 << 1) | (1 << 2) | (1 << 3) | (1 << (5 + 1))
+    res += struct.pack("<I", mask)
+
+    b_main = bundle.Blob(b"yaLV", (1, 1), [(b"  dI", 0, struct.pack("<i", 0))], bytes(res))
+
+    res_sh = bytearray(struct.pack("<H", 1))
+    res_sh += struct.pack("<I", 8) + b"POSITION"
+    res_sh += struct.pack("<H", 1)
+    res_sh += struct.pack("<HHIIiI", 0, 0, 0, 6, 0, 0)
+    res_sh += struct.pack("<I", 3)
+    res_sh += struct.pack("<I", 0)
+    b_shadow = bundle.Blob(b"yaLV", (1, 1), [(b"  dI", 0, struct.pack("<i", -1))], bytes(res_sh))
+
+    return b_main, b_shadow
+
+
+def make_verb_blobs(positions: np.ndarray, normals: np.ndarray, tangents: np.ndarray, uv0: np.ndarray, uv1: np.ndarray):
+    """Creates VerB -1 (Positions) and VerB 0 (Attributes)."""
+    n = len(positions)
+
+    # VerB -1: Positions (stride 12, dxgi 6)
+    pos_data = bytearray(struct.pack("<IIHHI", n, n * 12, 12, 1, 6))
+    pos_data += positions.astype(np.float32).tobytes()
+    b_pos = bundle.Blob(b"BreV", (1, 0), [(b"  dI", 0, struct.pack("<i", -1))], bytes(pos_data))
+
+    # VerB 0: Attributes (stride 32, dxgi 10)
+    norm16 = np.zeros((n, 4), dtype=np.float16)
+    norm16[:, :3] = normals[:, :3]
+
+    tan16 = np.zeros((n, 4), dtype=np.float16)
+    tan16[:, :3] = tangents[:, :3]
+    tan16[:, 3] = 1.0
+
+    uv0_16 = uv0.astype(np.float16)
+    uv1_16 = uv1.astype(np.float16)
+    zeros16 = np.zeros((n, 2), dtype=np.float16)
+
+    attr = np.empty((n, 16), dtype=np.float16)
+    attr[:, 0:4] = norm16
+    attr[:, 4:6] = uv0_16
+    attr[:, 6:8] = uv1_16
+    attr[:, 8:10] = zeros16
+    attr[:, 10:12] = zeros16
+    attr[:, 12:16] = tan16
+
+    attr_data = bytearray(struct.pack("<IIHHI", n, n * 32, 32, 6, 10))
+    attr_data += attr.tobytes()
+    b_attr = bundle.Blob(b"BreV", (1, 0), [(b"  dI", 0, struct.pack("<i", 0))], bytes(attr_data))
+
+    return b_pos, b_attr
+
+
+def make_indb_blob(indices: np.ndarray):
+    """Creates IndB 0 (stride 4, dxgi 42)."""
+    n = len(indices)
+    ind_data = bytearray(struct.pack("<IIHHI", n, n * 4, 4, 1, 42))
+    ind_data += indices.astype(np.uint32).tobytes()
+    return bundle.Blob(b"BdnI", (1, 0), [(b"  dI", 0, struct.pack("<i", 0))], bytes(ind_data))
+
+
+def make_mesh_blob(name: str, mat_idx: int, start_idx: int, idx_count: int, bbox: np.ndarray, is_shadow: bool = False):
+    """Creates a Mesh v1.7 blob."""
+    m_data = bytearray()
+    m_data += struct.pack("<hHHBBHB", mat_idx, 0, 0, 0, 0, 0, 0)
+    m_data += struct.pack("<BB", 0, 0)
+    m_data += struct.pack("<B", 0)
+    m_data += struct.pack("<BH", 0, 0)
+    m_data += struct.pack("<iIiiII", 0, 0, start_idx, 0, idx_count, 0)
+    m_data += struct.pack("<fI", 0.0, 0)
+    m_data += struct.pack("<I", 0)
+
+    if is_shadow:
+        m_data += struct.pack("<I", 1)
+        m_data += struct.pack("<iIII", -1, 0, 12, 0)
+    else:
+        m_data += struct.pack("<I", 2)
+        m_data += struct.pack("<iIII", -1, 0, 12, 0)
+        m_data += struct.pack("<iIII", 0, 1, 32, 0)
+
+    m_data += struct.pack("<ii", 0, 0)
+    m_data += struct.pack("<I", 0)
+    m_data += struct.pack("<I", 0)
+    m_data += bytes(80)
+
+    b_meta = [
+        (b"emaN", 0, name.encode("latin1")),
+        (b"xoBB", 0, bbox.astype(np.float32).tobytes()),
+    ]
+    return bundle.Blob(b"hseM", (1, 7), b_meta, bytes(m_data))
+
+
+def make_modl_blob(bbox: np.ndarray):
+    """Creates a Modl v1.1 blob."""
+    data = bytes.fromhex("26000900040006000105ff007f00")
+    b_meta = [
+        (b"xoBB", 0, bbox.astype(np.float32).tobytes()),
+        (b"feRT", 0, b""),
+    ]
+    return bundle.Blob(b"ldoM", (1, 1), b_meta, data)
+
+
+def convert_part_to_modelbin(part: carbin.FH1Part, donor_skel: Optional[bundle.Blob] = None, lod_name: str = "LODS0") -> bytes:
+    """Converts a single FH1Part into full FH2 .modelbin bytes."""
+    n_verts = part.vertex_count
+    if n_verts == 0:
+        raise ValueError(f"Part {part.name} has 0 vertices")
+
+    all_indices = []
+    sub_mesh_infos = []
+
+    for mesh in part.meshes:
+        if mesh.triangle_count == 0:
+            continue
+        flat_idx = mesh.triangles.flatten()
+        start_i = len(all_indices)
+        cnt_i = len(flat_idx)
+        all_indices.extend(flat_idx)
+        fh2_mat = map_material(mesh.shader)
+        sub_mesh_infos.append((mesh.shader, fh2_mat, start_i, cnt_i))
+
+    if not all_indices:
+        raise ValueError(f"Part {part.name} has no valid triangles")
+
+    all_indices = np.array(all_indices, dtype=np.uint32)
+
+    # Compute BBox
+    b_min = np.min(part.positions, axis=0)
+    b_max = np.max(part.positions, axis=0)
+    bbox = np.concatenate([b_min, b_max])
+
+    blobs = []
+    if donor_skel:
+        blobs.append(donor_skel)
+
+    # MatI blobs
+    mat_to_id = {}
+    for _, fh2_mat, _, _ in sub_mesh_infos:
+        if fh2_mat not in mat_to_id:
+            mat_id = len(mat_to_id)
+            mat_to_id[fh2_mat] = mat_id
+            blobs.append(make_mati_blob(mat_id, fh2_mat))
+
+    # Mesh blobs
+    for _, fh2_mat, start_i, cnt_i in sub_mesh_infos:
+        mat_id = mat_to_id[fh2_mat]
+        m_name = f"{part.name}_{lod_name}"
+        blobs.append(make_mesh_blob(m_name, mat_id, start_i, cnt_i, bbox, is_shadow=False))
+
+    # Shadow mesh blob
+    blobs.append(make_mesh_blob("Shadow", -1, 0, len(all_indices), bbox, is_shadow=True))
+
+    # IndB blob
+    blobs.append(make_indb_blob(all_indices))
+
+    # VLay blobs
+    v_main, v_sh = make_vlay_blobs()
+    blobs.append(v_main)
+    blobs.append(v_sh)
+
+    # VerB blobs
+    b_pos, b_attr = make_verb_blobs(part.positions, part.normals, part.tangents, part.uv0, part.uv1)
+    blobs.append(b_pos)
+    blobs.append(b_attr)
+
+    # Modl blob
+    blobs.append(make_modl_blob(bbox))
+
+    return bundle.serialize(blobs)

@@ -23,6 +23,8 @@ Forza Horizon 2 Convertor/ForzaToolsCli-linux
 *.exe
 *.zip
 research/fmnext_cli/
+ForzaEditor/
+research/fh1/ForzaStudio-EVO/
 
 # ── Game files: never commit anything from Forza Horizon 2 / 3 ──
 *.slt
