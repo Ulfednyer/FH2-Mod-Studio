@@ -62,7 +62,12 @@ def rename_scene(data: bytes, new_car_id: int, old_media: str, new_media: str) -
     def copy_str():
         nonlocal out
         s = r.s()
-        s_new = s.replace(old_m_lower, new_m_lower).replace(old_media, new_media)
+        # shared files (game:\media\cars\_library\..., e.g. the donor's wheel AO in Textures.zip) keep the donor's
+        # name - renamed, they pointed at files that don't exist and the showroom 3D view stayed black
+        if "\\cars\\_library\\" in s.lower():
+            s_new = s
+        else:
+            s_new = s.replace(old_m_lower, new_m_lower).replace(old_media, new_media)
         s_bytes = s_new.encode("latin-1")
         out += struct.pack("<I", len(s_bytes)) + s_bytes
         return s_new

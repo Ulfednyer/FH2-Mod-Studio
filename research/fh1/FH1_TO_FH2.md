@@ -152,7 +152,12 @@ AUD_R8GT_11 (id 2755) crashes when selected in the Autoshow:
    FPS fine, no Azimuth error). Found: TEXCOORD0-3 declared R16G16_UNORM (dxgi 35) but written as half floats, and all
    mesh UV transforms (Mesh >= 1.5 tail, (offset, scale, offset, scale) x5; uv = offset + unorm * scale) were 0 ->
    every UV 0. Generator now writes UNORM16 + real transforms; research\fh1\uvfix.py repaired the 23 installed models.
-   Whether this was the black-screen cause is UNTESTED as of commit time.
+   Still black after that. The donor R8 Plus renders fine in the same screen. research\fh1\pathcheck.py (resolves
+   carbin model/AO paths and model material paths against all car + _library zips) found the difference:
+   fh1port.rename_scene renamed the donor in EVERY carbin string, including the shared library wheel AO ->
+   _library\textures\libraryao\wheels\aud_r8gt_11_wheellf_ao.swatchbin, which does not exist (4 refs). Shared
+   cars\_library paths now keep the donor's name; research\fh1\aopathfix.py repaired the installed carbin.
+   UNTESTED in game as of commit time.
 Run on every ported zip: research\fh3port\modlcounts.py, strict.py, fh3port carbin.py check, batch_port.check_car,
 research\fh1\refcheck.py, vertcheck.py, morphfix.py, uvfix.py (the fixers are no-ops when clean).
 
