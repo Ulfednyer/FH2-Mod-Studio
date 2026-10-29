@@ -161,7 +161,11 @@ AUD_R8GT_11 (id 2755) crashes when selected in the Autoshow:
    Then found: the carbin's upgrade row ids (upgrade rowId/bodyRowId + v3 model tags) stayed the donor's
    (2010000/2010001) while fh1port renumbers the database rows to the new car id (2755000/2755001): FH2 finds no
    carbin entry for the car's stock body/wing/bumper rows. rename_scene now remaps <old id>NNN -> <new id>NNN; the
-   installed carbin was rebuilt with it (only those 16 ids differ). UNTESTED in game as of commit time.
+   installed carbin was rebuilt with it (only those 16 ids differ).
+4. Then Color Select passes, but the showroom shows only sky + a shadow, no car (not even the 57 untouched donor
+   models) -> car-level data. A DB reference check found List_UpgradeRearWing.AeroPhysicsID 2755901/2755902 with no
+   List_AeroPhysics rows (fh1port step 6 renumbers ids but only clones Ordinal tables). fh1port step 7
+   (clone_referenced_rows) now copies them; the installed DB got the 2 rows. UNTESTED in game as of commit time.
 Run on every ported zip: research\fh3port\modlcounts.py, strict.py, fh3port carbin.py check, batch_port.check_car,
 research\fh1\refcheck.py, vertcheck.py, morphfix.py, uvfix.py (the fixers are no-ops when clean).
 
