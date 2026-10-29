@@ -547,10 +547,38 @@ def inject_database(fh1_db_path: str, fh2_db_path: str, fh1_car_name: str, donor
             db2.execute(f"INSERT INTO {ut} ({', '.join(cols_ut)}) VALUES ({', '.join('?' * len(cols_ut))})", [r_dict[c] for c in cols_ut])
         print(f"      Cloned {len(donor_rows)} rows in {ut} for Ordinal={new_car_id}")
 
+    # 7) rows the cloned upgrades point at by id, in tables without an Ordinal (renumbered like the ids above).
+    #    Missing List_AeroPhysics rows for the wing upgrades left the car without aero physics: in the Autoshow only
+    #    the sky and a shadow rendered, no car.
+    clone_referenced_rows(db2, "List_UpgradeRearWing", "AeroPhysicsID", "List_AeroPhysics", donor_car_id, new_car_id)
+
     db2.commit()
     db1.close()
     db2.close()
     print("      Database updates committed successfully.")
+
+
+def clone_referenced_rows(db, ref_table: str, ref_col: str, target: str, donor_car_id: int, new_car_id: int) -> int:
+    """For each new-car row of ref_table whose ref_col (a renumbered id) has no row in target, copies the donor's row
+    (same id with the donor's car-id prefix) under the new id. Returns the number of rows inserted."""
+    key = db.execute(f"PRAGMA table_info('{target}')").fetchall()[0][1]
+    cols = [c[1] for c in db.execute(f"PRAGMA table_info('{target}')")]
+    old_s, new_s = str(donor_car_id), str(new_car_id)
+    n = 0
+    for (v,) in db.execute(f"SELECT DISTINCT {ref_col} FROM {ref_table} WHERE Ordinal = ?", (new_car_id,)).fetchall():
+        if not isinstance(v, int) or not str(v).startswith(new_s):
+            continue
+        if db.execute(f"SELECT 1 FROM {target} WHERE {key} = ?", (v,)).fetchone():
+            continue
+        src = db.execute(f"SELECT * FROM {target} WHERE {key} = ?", (int(old_s + str(v)[len(new_s):]),)).fetchone()
+        if src is None:
+            raise RuntimeError(f"{ref_table}.{ref_col}={v}: no donor row in {target}")
+        row = list(src)
+        row[cols.index(key)] = v
+        db.execute(f"INSERT INTO {target} ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})", row)
+        n += 1
+    print(f"      Cloned {n} {target} rows referenced by {ref_table}.{ref_col}")
+    return n
 
 
 def inject_stringtables(fh1_str_dir: str, fh2_str_dir: str, k_disp: int = 22844, k_short: int = 24312):
