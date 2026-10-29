@@ -18,6 +18,7 @@ if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
 import bundle
+import vlayfix
 import geom
 import fh1carbin as carbin
 
@@ -176,20 +177,21 @@ def make_vlay_blobs():
         res += struct.pack("<I", len(s)) + s.encode("latin1")
 
     elements = [
-        (0, 0, 0, 6, 0, 0, 3),    # POSITION slot 0
-        (1, 0, 1, 10, 0, 0, 9),   # NORMAL slot 1, off 0
-        (2, 0, 1, 35, 8, 0, 46),  # TEXCOORD0 slot 1, off 8
-        (2, 1, 1, 35, 12, 0, 46), # TEXCOORD1 slot 1, off 12
-        (2, 2, 1, 35, 16, 0, 46), # TEXCOORD2 slot 1, off 16
-        (2, 3, 1, 35, 20, 0, 46), # TEXCOORD3 slot 1, off 20
-        (3, 1, 1, 10, 24, 0, 9),  # TANGENT1 slot 1, off 24
+        (0, 0, 0, 6, -1, 0, 3),    # POSITION slot 0
+        (1, 0, 1, 10, -1, 0, 9),   # NORMAL slot 1, off -1
+        (2, 0, 1, 35, -1, 0, 46),  # TEXCOORD0 slot 1, off -1
+        (2, 1, 1, 35, -1, 0, 46),  # TEXCOORD1 slot 1, off -1
+        (2, 2, 1, 35, -1, 0, 46),  # TEXCOORD2 slot 1, off -1
+        (2, 3, 1, 35, -1, 0, 46),  # TEXCOORD3 slot 1, off -1
+        (3, 0, 1, 10, -1, 0, 9),   # TANGENT0 slot 1, off -1
+        (3, 1, 1, 10, -1, 0, 9),   # TANGENT1 slot 1, off -1
     ]
     res += struct.pack("<H", len(elements))
     for el in elements:
         res += struct.pack("<HHIIiI", el[0], el[1], el[2], el[3], el[4], el[5])
     for el in elements:
         res += struct.pack("<I", el[6])
-    mask = (1 << 0) | (1 << 1) | (1 << 2) | (1 << 3) | (1 << (5 + 1))
+    mask = (1 << 0) | (1 << 1) | (1 << 2) | (1 << 3) | (1 << 5) | (1 << 6)
     res += struct.pack("<I", mask)
 
     b_main = bundle.Blob(b"yaLV", (1, 1), [(b"  dI", 0, struct.pack("<i", 0))], bytes(res))
@@ -214,27 +216,34 @@ def make_verb_blobs(positions: np.ndarray, normals: np.ndarray, tangents: np.nda
     pos_data += positions.astype(np.float32).tobytes()
     b_pos = bundle.Blob(b"BreV", (1, 0), [(b"  dI", 0, struct.pack("<i", -1))], bytes(pos_data))
 
-    # VerB 0: Attributes (stride 32, dxgi 10)
+    # VerB 0: Attributes (stride 40, dxgi 10)
     norm16 = np.zeros((n, 4), dtype=np.float16)
     norm16[:, :3] = normals[:, :3]
 
-    tan16 = np.zeros((n, 4), dtype=np.float16)
-    tan16[:, :3] = tangents[:, :3]
-    tan16[:, 3] = 1.0
+    tan0_16 = np.zeros((n, 4), dtype=np.float16)
+    tan0_16[:, :3] = tangents[:, :3]
+    tan0_16[:, 3] = 1.0
+
+    # Bitangent: normal x tangent
+    bitan = np.cross(normals[:, :3], tangents[:, :3])
+    tan1_16 = np.zeros((n, 4), dtype=np.float16)
+    tan1_16[:, :3] = bitan
+    tan1_16[:, 3] = 1.0
 
     uv0_16 = uv0.astype(np.float16)
     uv1_16 = uv1.astype(np.float16)
     zeros16 = np.zeros((n, 2), dtype=np.float16)
 
-    attr = np.empty((n, 16), dtype=np.float16)
+    attr = np.empty((n, 20), dtype=np.float16)
     attr[:, 0:4] = norm16
     attr[:, 4:6] = uv0_16
     attr[:, 6:8] = uv1_16
     attr[:, 8:10] = zeros16
     attr[:, 10:12] = zeros16
-    attr[:, 12:16] = tan16
+    attr[:, 12:16] = tan0_16
+    attr[:, 16:20] = tan1_16
 
-    attr_data = bytearray(struct.pack("<IIHHI", n, n * 32, 32, 6, 10))
+    attr_data = bytearray(struct.pack("<IIHHI", n, n * 40, 40, 7, 10))
     attr_data += attr.tobytes()
     b_attr = bundle.Blob(b"BreV", (1, 0), [(b"  dI", 0, struct.pack("<i", 0))], bytes(attr_data))
 
@@ -249,16 +258,29 @@ def make_indb_blob(indices: np.ndarray):
     return bundle.Blob(b"BdnI", (1, 0), [(b"  dI", 0, struct.pack("<i", 0))], bytes(ind_data))
 
 
-def make_mesh_blob(name: str, mat_idx: int, start_idx: int, idx_count: int, bbox: np.ndarray, is_shadow: bool = False):
+def make_mesh_blob(name: str, mat_idx: int, start_idx: int, idx_count: int, bbox: np.ndarray, is_shadow: bool = False, unique_verts: int = 0):
     """Creates a Mesh v1.7 blob."""
+    tri_count = idx_count // 3
+    radius = float(np.linalg.norm((bbox[3:6] - bbox[0:3]) / 2.0))
+    scale = max(radius, 1.0)
+    if unique_verts == 0:
+        unique_verts = idx_count
+
     m_data = bytearray()
-    m_data += struct.pack("<hHHBBHB", mat_idx, 0, 0, 0, 0, 0, 0)
-    m_data += struct.pack("<BB", 0, 0)
-    m_data += struct.pack("<B", 0)
-    m_data += struct.pack("<BH", 0, 0)
-    m_data += struct.pack("<iIiiII", 0, 0, start_idx, 0, idx_count, 0)
-    m_data += struct.pack("<fI", 0.0, 0)
-    m_data += struct.pack("<I", 0)
+    if is_shadow:
+        # Shadow mesh header flags: (-1, 1, 3, 0, 255, 9, 0, 0, 1, 1, 1, 4)
+        m_data += struct.pack("<hHHBBHB", -1, 1, 3, 0, 255, 9, 0)
+    else:
+        # Regular mesh header flags: (mat_idx, 1, 3, 0, 255, 17, 0, 0, 1, 1, 1, 4)
+        m_data += struct.pack("<hHHBBHB", mat_idx, 1, 3, 0, 255, 17, 0)
+
+    m_data += struct.pack("<BB", 0, 1)    # ge2_1=0, ge2_2=1
+    m_data += struct.pack("<B", 1)       # ge3_1=1
+    m_data += struct.pack("<BH", 1, 4)   # b3=1, u4=4 (D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST)
+    m_data += struct.pack("<iIiiII", 0, 0, start_idx, 0, idx_count, tri_count) # u6 = tri_count
+    m_data += struct.pack("<fI", scale, unique_verts) # scale factor, u7 = unique_verts
+    layout_id = 1 if is_shadow else 0
+    m_data += struct.pack("<I", layout_id) # layout index
 
     if is_shadow:
         m_data += struct.pack("<I", 1)
@@ -266,12 +288,17 @@ def make_mesh_blob(name: str, mat_idx: int, start_idx: int, idx_count: int, bbox
     else:
         m_data += struct.pack("<I", 2)
         m_data += struct.pack("<iIII", -1, 0, 12, 0)
-        m_data += struct.pack("<iIII", 0, 1, 32, 0)
+        m_data += struct.pack("<iIII", 0, 1, 40, 0)
 
-    m_data += struct.pack("<ii", 0, 0)
-    m_data += struct.pack("<I", 0)
-    m_data += struct.pack("<I", 0)
-    m_data += bytes(80)
+    m_data += struct.pack("<ii", 0, -1)  # v1=0, v2=-1
+    m_data += struct.pack("<I", 0)       # n3=0
+    m_data += struct.pack("<I", 0)       # v3=0
+
+    if is_shadow:
+        m_data += bytes(80)              # 80 zeros for shadow
+    else:
+        # 64 bytes zeros followed by standard [0.0, 1.0, 0.0, 1.0] UV bounds
+        m_data += bytes(64) + struct.pack("<4f", 0.0, 1.0, 0.0, 1.0)
 
     b_meta = [
         (b"emaN", 0, name.encode("latin1")),
@@ -280,12 +307,11 @@ def make_mesh_blob(name: str, mat_idx: int, start_idx: int, idx_count: int, bbox
     return bundle.Blob(b"hseM", (1, 7), b_meta, bytes(m_data))
 
 
-def make_modl_blob(bbox: np.ndarray):
+def make_modl_blob(n_meshes: int, bbox: np.ndarray):
     """Creates a Modl v1.1 blob."""
-    data = bytes.fromhex("26000900040006000105ff007f00")
+    data = struct.pack("<HHHH", n_meshes, 1, 1, 1) + bytes.fromhex("0105ff007f00")
     b_meta = [
         (b"xoBB", 0, bbox.astype(np.float32).tobytes()),
-        (b"feRT", 0, b""),
     ]
     return bundle.Blob(b"ldoM", (1, 1), b_meta, data)
 
@@ -335,10 +361,12 @@ def convert_part_to_modelbin(part: carbin.FH1Part, donor_skel: Optional[bundle.B
     for _, fh2_mat, start_i, cnt_i in sub_mesh_infos:
         mat_id = mat_to_id[fh2_mat]
         m_name = f"{part.name}_{lod_name}"
-        blobs.append(make_mesh_blob(m_name, mat_id, start_i, cnt_i, bbox, is_shadow=False))
+        sub_idx = all_indices[start_i:start_i + cnt_i]
+        u_verts = len(np.unique(sub_idx))
+        blobs.append(make_mesh_blob(m_name, mat_id, start_i, cnt_i, bbox, is_shadow=False, unique_verts=u_verts))
 
     # Shadow mesh blob
-    blobs.append(make_mesh_blob("Shadow", -1, 0, len(all_indices), bbox, is_shadow=True))
+    blobs.append(make_mesh_blob("Shadow", -1, 0, len(all_indices), bbox, is_shadow=True, unique_verts=n_verts))
 
     # IndB blob
     blobs.append(make_indb_blob(all_indices))
@@ -354,6 +382,10 @@ def convert_part_to_modelbin(part: carbin.FH1Part, donor_skel: Optional[bundle.B
     blobs.append(b_attr)
 
     # Modl blob
-    blobs.append(make_modl_blob(bbox))
+    n_meshes = len(sub_mesh_infos) + 1
+    blobs.append(make_modl_blob(n_meshes, bbox))
+    # Modl's u16 counts must match the blobs (meshes, VerB+IndB+MBuf+ConB+Skin, VLay, MatI); FH2 sizes its arrays by
+    # them - the hard-coded 1/1/1 crashed FH2 at game+0xfd841f when the car loaded in the Autoshow
+    vlayfix.update_modl_counts(blobs)
 
     return bundle.serialize(blobs)

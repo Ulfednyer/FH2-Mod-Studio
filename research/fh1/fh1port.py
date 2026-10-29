@@ -267,7 +267,14 @@ def build_car_archive(fh1_zip_path: str, donor_zip_path: str, out_zip_path: str,
     add_rep("bumperRa", "scene/Exterior/BumperR/bumperR_a.modelbin", m_lod0)
     add_rep("winga", "scene/_library/scene/R8/Scene/Exterior/Trunk/wing_a.modelbin", m_lod0)
     add_rep("wingrace", "scene/_library/scene/R8/Scene/Exterior/Trunk/wing_race.modelbin", m_lod0)
-    add_rep("skirtLa", "scene/_library/scene/R8/Scene/Exterior/SideSkirts/skirtL_a.modelbin", m_lod0)
+    # Combined skirts (skirtLa + skirtRa)
+    if "skirtLa" in m_lod0.parts and "skirtRa" in m_lod0.parts:
+        comb_sk = fh1modelbin.combine_parts([m_lod0.parts["skirtLa"], m_lod0.parts["skirtRa"]], "skirt_a")
+        mb_sk = fh1modelbin.convert_part_to_modelbin(comb_sk, skel_blob)
+        modelbin_replacements["scene/_library/scene/r8/scene/exterior/sideskirts/skirtl_a.modelbin"] = mb_sk
+        print(f"      Converted combined skirts -> scene/_library/scene/R8/Scene/Exterior/SideSkirts/skirtL_a.modelbin ({len(mb_sk):,} bytes)")
+    else:
+        add_rep("skirtLa", "scene/_library/scene/R8/Scene/Exterior/SideSkirts/skirtL_a.modelbin", m_lod0)
     add_rep("trunk", "scene/_library/scene/R8/Scene/Exterior/Trunk/trunk_a.modelbin", m_lod0)
     add_rep("undercarriagea", "scene/Exterior/Chassis/Undercarriage_a.modelbin", m_lod0)
 
@@ -355,7 +362,13 @@ def build_car_archive(fh1_zip_path: str, donor_zip_path: str, out_zip_path: str,
 
     # Write native FH2 zip file
     fh3port.write_native_zip(out_zip_path, out_entries)
-    print(f"      Successfully wrote {out_zip_path} with {len(out_entries)} entries.")
+    # vertex layouts to exactly what each mesh's FH2 shader takes (the generic main layout supplied extra or missing
+    # inputs: Azimuth D3D12 pipeline errors / black parts, see fh3port vlayfix + CRASHES.md)
+    tmp = out_zip_path + ".vlay.zip"
+    log = fh3port.fix_vertex_layouts(out_zip_path, tmp, fh1_car_name)
+    fh3port.normalize_zip(tmp, out_zip_path)
+    os.remove(tmp)
+    print(f"      Successfully wrote {out_zip_path} with {len(out_entries)} entries ({len(log)} vertex layout fixes).")
 
 
 def inject_database(fh1_db_path: str, fh2_db_path: str, fh1_car_name: str, donor_car_name: str,
@@ -394,7 +407,7 @@ def inject_database(fh1_db_path: str, fh2_db_path: str, fh1_car_name: str, donor
     new_car_row["IsPurchased"] = 1
     new_car_row["IsInstalled"] = 1
     new_car_row["IsDrivable"] = 1
-    new_car_row["IsArcade"] = 1
+    new_car_row["IsArcade"] = 0
     new_car_row["Thumbnail"] = f"game:\\Media\\Stripped\\RC0\\Thumbnail_{donor_car_id}.png"
     new_car_row["StockWheelID"] = r2["StockWheelID"]
     new_car_row["IsOpenCockpit"] = 0
@@ -406,6 +419,14 @@ def inject_database(fh1_db_path: str, fh2_db_path: str, fh1_car_name: str, donor
     val_str = ", ".join("?" for _ in cols2)
     db2.execute(f"INSERT INTO Data_Car ({col_str}) VALUES ({val_str})", [new_car_row[c] for c in cols2])
     print(f"      Inserted Data_Car row for {fh1_car_name} (Id={new_car_id})")
+
+    # 1b) Data_Car_Buckets (mandatory for autoshow / purchase transactions)
+    db2.execute("DELETE FROM Data_Car_Buckets WHERE CarId = ?", (new_car_id,))
+    donor_bucket = db2.execute("SELECT CarBucket, BucketHero FROM Data_Car_Buckets WHERE CarId = ?", (donor_car_id,)).fetchone()
+    if donor_bucket:
+        db2.execute("INSERT INTO Data_Car_Buckets (CarId, CarBucket, BucketHero) VALUES (?, ?, ?)",
+                    (new_car_id, donor_bucket["CarBucket"], donor_bucket["BucketHero"]))
+        print(f"      Inserted Data_Car_Buckets: CarBucket={donor_bucket['CarBucket']}, BucketHero={donor_bucket['BucketHero']}")
 
     # 2) CameraOverrides
     db2.execute("DELETE FROM CameraOverrides WHERE CarId = ?", (new_car_id,))
@@ -419,15 +440,11 @@ def inject_database(fh1_db_path: str, fh2_db_path: str, fh1_car_name: str, donor
         db2.execute(f"INSERT INTO CameraOverrides ({c_str}) VALUES ({v_str})", [cam_row[c] for c in cols_cam])
         print(f"      Inserted CameraOverrides for CarId={new_car_id}")
 
-    # 3) CarPartPositions
+    # 3) CarPartPositions (modern FH2 Durango standard: single root locator row)
     db2.execute("DELETE FROM CarPartPositions WHERE Ordinal = ?", (new_car_id,))
-    for ppos in db1.execute("SELECT * FROM CarPartPositions WHERE Ordinal = ?", (fh1_car_id,)):
-        p_row = dict(ppos)
-        p_row["Ordinal"] = new_car_id
-        p_row["ID"] = new_car_id * 1000 + p_row["PartId"]
-        cols_ppos = list(p_row.keys())
-        db2.execute(f"INSERT INTO CarPartPositions ({', '.join(cols_ppos)}) VALUES ({', '.join('?' * len(cols_ppos))})", list(p_row.values()))
-    print(f"      Inserted CarPartPositions for Ordinal={new_car_id}")
+    db2.execute("INSERT INTO CarPartPositions (ID, Ordinal, PartId, PartPosX, PartPosY, PartPosZ) VALUES (?, ?, 0, 0.0, 0.0, 0.0)",
+                (new_car_id * 1000, new_car_id))
+    print(f"      Inserted CarPartPositions locator for Ordinal={new_car_id}")
 
     # 4) Combo_Colors
     db2.execute("DELETE FROM Combo_Colors WHERE Ordinal = ?", (new_car_id,))
@@ -456,10 +473,44 @@ def inject_database(fh1_db_path: str, fh2_db_path: str, fh1_car_name: str, donor
     db2.execute(f"INSERT INTO Data_CarBody ({', '.join(cols_cb2)}) VALUES ({', '.join('?' * len(cols_cb2))})", [cb_row[c] for c in cols_cb2])
     print(f"      Inserted Data_CarBody for Id={new_car_id * 1000}")
 
-    # 6) Clone Upgrade Tables from donor
+    # 5b) Clone all body-keyed upgrade tables (CarBodyID = donor_car_id * 1000 -> new_car_id * 1000)
+    body_upgrade_tables = [
+        "List_UpgradeCarBody",
+        "List_UpgradeCarBodyChassisStiffness",
+        "List_UpgradeCarBodyFrontBumper",
+        "List_UpgradeCarBodyHood",
+        "List_UpgradeCarBodyRearBumper",
+        "List_UpgradeCarBodySideSkirt",
+        "List_UpgradeCarBodyTireWidthFront",
+        "List_UpgradeCarBodyTireWidthRear",
+        "List_UpgradeCarBodyWeight"
+    ]
+    old_body = donor_car_id * 1000
+    new_body = new_car_id * 1000
+    for bt in body_upgrade_tables:
+        cols_bt = [c[1] for c in db2.execute(f"PRAGMA table_info('{bt}')").fetchall()]
+        cb_col = next((c for c in cols_bt if "carbody" in c.lower()), "CarBodyID")
+        db2.execute(f"DELETE FROM {bt} WHERE {cb_col} = ?", (new_body,))
+        if "Id" in cols_bt:
+            db2.execute(f"DELETE FROM {bt} WHERE Id >= ? AND Id < ?", (new_body, new_body + 1000))
+        donor_rows = db2.execute(f"SELECT * FROM {bt} WHERE {cb_col} = ?", (old_body,)).fetchall()
+        for dr in donor_rows:
+            r_dict = dict(dr)
+            for k in list(r_dict.keys()):
+                if k.lower() == "carbodyid":
+                    r_dict[k] = new_body
+                elif k.lower() == "ordinal":
+                    r_dict[k] = new_car_id
+                elif k.lower() == "id" and isinstance(r_dict[k], int):
+                    if old_body <= r_dict[k] < old_body + 1000:
+                        r_dict[k] = new_body + (r_dict[k] - old_body)
+            db2.execute(f"INSERT INTO {bt} ({', '.join(cols_bt)}) VALUES ({', '.join('?' * len(cols_bt))})", [r_dict[c] for c in cols_bt])
+        print(f"      Cloned {len(donor_rows)} rows in {bt} for CarBodyID={new_body}")
+
+    # 6) Clone Ordinal-keyed Upgrade Tables from donor
     upgrade_tables = [
         "List_AntiSwayPhysics", "List_SpringDamperPhysics", "List_UpgradeAntiSwayFront",
-        "List_UpgradeAntiSwayRear", "List_UpgradeBrakes", "List_UpgradeCarBody",
+        "List_UpgradeAntiSwayRear", "List_UpgradeBrakes",
         "List_UpgradeDrivetrain", "List_UpgradeEngine", "List_UpgradeRearWing",
         "List_UpgradeRimSizeFront", "List_UpgradeRimSizeRear", "List_UpgradeSpringDamper",
         "List_UpgradeTireCompound"
