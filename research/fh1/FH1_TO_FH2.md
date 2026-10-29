@@ -142,8 +142,12 @@ AUD_R8GT_11 (id 2755) crashes when selected in the Autoshow:
 1. FIXED: game+0xfd841f - Modl header counts were written as (meshes, 1, 1, 1); FH2 sizes its buffer/layout/material
    arrays by them. fh1modelbin now calls fh3port vlayfix.update_modl_counts; fh1port runs fh3port.fix_vertex_layouts
    (3 meshes lacked shader inputs). Installed zip repaired (journal backup).
-2. OPEN: game+0x13e7398 reading 0xc = Blob_OpenDataStream (0x1413E7360) called with a NULL blob - a model asks for a
-   blob id that is not in its file. Check every Mesh's VerB/IndB/VLay/MatI references against the blobs of each
-   fh1modelbin (and donor models), dump amzimuth\data\logs61029T084343-476-10296.dmp for the caller.
-Run on every ported zip: researchh3port\modlcounts.py, strict.py, fh3port carbin.py check, batch_port.check_car.
+2. FIXED: game+0x13e7398 reading 0xc = Blob_OpenDataStream (0x1413E7360) on a NULL blob. Model_LoadFromBundle
+   (0x1413F1D70) opens the 'Mrph' blob without a check when Model+4 is set; Model_LoadMeshes makes Model+4 the max of
+   every mesh's +0x12C byte = Mesh 1.2 header byte at file offset 12 (offset 13 = Mesh 1.3 bool +0x12D). fh1modelbin
+   wrote (.., 1) / 1 there although it writes no Mrph; FH2 sets them only in models that have a Mrph blob (R8 Plus:
+   506 no-morph meshes, all 0/0). Generator writes 0/0 now; research\fh1\morphfix.py repaired the 23 installed models.
+   Found from the dump (r10 = 0x4D727068 'Mrph') - research\fh1\dmpstack.py <dmp> 140000000 reads minidumps without a debugger.
+Run on every ported zip: research\fh3port\modlcounts.py, strict.py, fh3port carbin.py check, batch_port.check_car,
+research\fh1\refcheck.py, research\fh1\morphfix.py (no-op when clean).
 

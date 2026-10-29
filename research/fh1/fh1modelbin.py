@@ -268,14 +268,16 @@ def make_mesh_blob(name: str, mat_idx: int, start_idx: int, idx_count: int, bbox
 
     m_data = bytearray()
     if is_shadow:
-        # Shadow mesh header flags: (-1, 1, 3, 0, 255, 9, 0, 0, 1, 1, 1, 4)
+        # Shadow mesh header flags: (-1, 1, 3, 0, 255, 9, 0, 0, 0, 0, 1, 4)
         m_data += struct.pack("<hHHBBHB", -1, 1, 3, 0, 255, 9, 0)
     else:
-        # Regular mesh header flags: (mat_idx, 1, 3, 0, 255, 17, 0, 0, 1, 1, 1, 4)
+        # Regular mesh header flags: (mat_idx, 1, 3, 0, 255, 17, 0, 0, 0, 0, 1, 4)
         m_data += struct.pack("<hHHBBHB", mat_idx, 1, 3, 0, 255, 17, 0)
 
-    m_data += struct.pack("<BB", 0, 1)    # ge2_1=0, ge2_2=1
-    m_data += struct.pack("<B", 1)       # ge3_1=1
+    # Mesh 1.2 bytes (+0x12B, +0x12C in FH2's mesh object); the second is the morph flag: Model_LoadFromBundle opens the
+    # Mrph blob without a check when any mesh sets it -> 1 here (no Mrph written) crashed the Autoshow at game+0x13e7398
+    m_data += struct.pack("<BB", 0, 0)
+    m_data += struct.pack("<B", 0)       # Mesh 1.3 bool (+0x12D): FH2 sets it only together with morphs
     m_data += struct.pack("<BH", 1, 4)   # b3=1, u4=4 (D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST)
     m_data += struct.pack("<iIiiII", 0, 0, start_idx, 0, idx_count, tri_count) # u6 = tri_count
     m_data += struct.pack("<fI", scale, unique_verts) # scale factor, u7 = unique_verts
