@@ -22,11 +22,11 @@ if not errorlevel 1 (
 )
 
 echo === Checking setup
-%PY% -I fh3port.py setup | find /I "setup ok" >nul || (%PY% -I fh3port.py setup & goto :fail)
+%PY% -E fh3port.py setup | find /I "setup ok" >nul || (%PY% -E fh3port.py setup & goto :fail)
 
 rem fh3port works on a copy of the current database, so cars ported earlier stay installed
 echo === Porting: %CARS%
-%PY% -I fh3port.py port %CARS% > "work\port_last.log" 2>&1
+%PY% -E fh3port.py port %CARS% > "work\port_last.log" 2>&1
 set "RC=%ERRORLEVEL%"
 type "work\port_last.log"
 if not "%RC%"=="0" goto :fail
@@ -36,7 +36,7 @@ echo.
 echo === Verifying
 set "BAD=0"
 for %%c in (%CARS%) do (
-    %PY% -I verify.py %%c > "work\verify_%%c.log" 2>&1
+    %PY% -E verify.py %%c > "work\verify_%%c.log" 2>&1
     findstr /C:"problems: 0" "work\verify_%%c.log" >nul && (echo %%c: verify ok) || (echo %%c: verify FAILED - see work\verify_%%c.log & set "BAD=1")
 )
 if "!BAD!"=="1" goto :fail

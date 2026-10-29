@@ -29,7 +29,8 @@ import vlayfix
 
 RESEARCH = os.path.join(os.path.dirname(P.HERE), "research", "fh3port")
 sys.path.insert(0, RESEARCH)
-PY = sys.executable
+PY = sys.executable   # run with -E, not -I: -I also drops the user site-packages, where the setup's `pip install --user`
+                      # puts numpy -> every check failed "No module named 'numpy'" and each car was rolled back
 SNAP_FILES = [P.FH2_DB, P.MANIFEST, P.HASH_MANIFEST, P.LIB_TEX_ZIP, P.JOURNAL]
 
 
@@ -103,7 +104,7 @@ def rollback(n):
 def verify_all(n):
     """verify.py checks every touched zip, the physics files and the database in one go (it ignores car names),
     so it runs once per round. Returns {zip path (lower): problem} and a list of non-zip problems."""
-    rc, out = run([PY, "-I", "verify.py"], os.path.join(P.WORK, "batch_%s_verify.log" % n))
+    rc, out = run([PY, "-E", "verify.py"], os.path.join(P.WORK, "batch_%s_verify.log" % n))
     bad_zips, other = {}, []
     for line in out.splitlines():
         if line.startswith("BAD ") or line.startswith("MISSING"):
@@ -130,7 +131,7 @@ def check_car(media, bad_zips, db):
     elif not db.execute("SELECT 1 FROM List_UpgradeEngine WHERE Ordinal = ?", (row[0],)).fetchone():
         problems.append("no engine rows")
     for script, ok in (("strict.py", "mismatches 0"), ("modlcounts.py", "mismatches 0")):
-        rc, out = run([PY, "-I", os.path.join(RESEARCH, script), zp])
+        rc, out = run([PY, "-E", os.path.join(RESEARCH, script), zp])
         last = out.strip().splitlines()[-1] if out.strip() else "no output"
         if ok not in last:
             problems.append("%s: %s" % (script, last[-80:]))
@@ -138,7 +139,7 @@ def check_car(media, bad_zips, db):
     need, ok = physdef.check_zip(zp)
     if not ok:
         problems.append("physicsdefinition.bin would crash FH2 (collision %s bytes, limit %d, or child model table set); re-port" % (need, physdef.LIMIT))
-    rc, out = run([PY, "-I", "carbin.py", "check", zp])
+    rc, out = run([PY, "-E", "carbin.py", "check", zp])
     if "failed: 0" not in out:
         problems.append("carbin check failed")
     import collections
